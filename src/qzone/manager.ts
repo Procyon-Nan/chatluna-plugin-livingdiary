@@ -92,7 +92,7 @@ export class QzoneManager {
             if (query.scope !== 'self') return client.listFeeds(query)
             // SDK 的 self 读取空间首页，会混入好友动态。个人主页按绑定账号取帖。
             const accountId = client.getSessionInfo().accountId
-            if (!accountId) throw new Error('空间登录态没有绑定账号。')
+            if (!accountId) throw new Error('空间登录态缺少绑定账号。')
             const userId = canonicalQQ(accountId)
             const page = await client.listFeeds({ ...query, scope: 'profile', userId })
             return { ...page, items: page.items.filter(post => canonicalQQ(post.authorId) === userId) }

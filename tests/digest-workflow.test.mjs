@@ -142,7 +142,7 @@ test('先存日记再发空间；归档失败不发送，回写失败保留已�
     api.journal.finishPublication = async () => { throw Error('database offline') }
     const report = await api.run()
     assert.equal(report.result, 'published')
-    assert.match(report.detail, /本地发布状态未能更新/)
+    assert.match(report.detail, /更新本地发布状态失败/)
 })
 
 test('格式错误带工具反馈纠正；模型异常共用七次预算，两次之间等五秒', async () => {

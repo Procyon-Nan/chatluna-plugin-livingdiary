@@ -39,11 +39,11 @@ export async function decideInteraction(ctx: Context, options: InteractionOption
         if (options.debug) {
             const summary = JSON.stringify({ system: systemPrompt, messages }, (_key, value) =>
                 value?.type === 'data' && typeof value.data === 'string' ? { type: 'data', size: value.data.length } : value)
-            ctx.logger.info('自动互动：model.prompt（%s，第 %d 步）\n%s', options.model, step, summary)
+            ctx.logger.info('自动互动：模型输入（%s，第 %d 步）\n%s', options.model, step, summary)
         }
         const result = await callModel(ctx, { model: options.model, system: systemPrompt, messages: [...messages],
             toolSpecs, toolChoice: 'required', purpose: 'livingdiary.interaction', cache: false }, signal)
-        if (options.debug) ctx.logger.info('自动互动：model.response（%s，第 %d 步）\n%s',
+        if (options.debug) ctx.logger.info('自动互动：模型响应（%s，第 %d 步）\n%s',
             options.model, step, JSON.stringify(result.content))
         const calls = result.toolCalls
         if (calls.length === 1) {

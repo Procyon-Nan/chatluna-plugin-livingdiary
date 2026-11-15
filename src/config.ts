@@ -57,7 +57,7 @@ const models = Schema.object({
         .description('空间日记与自动互动共用的人设，也是日记的记忆来源。'),
     mainModel: modelAddressSchema({ description: '撰写日记的模型。', modality: 'chat', roles: true, default: '' }),
     subModel: modelAddressSchema({ description: '决定是否评论、回复及撰写正文的模型。', modality: 'chat', roles: true, default: '' }),
-    debug: Schema.boolean().default(false).description('在日志中显示日记和互动的模型提示词与响应。')
+    debug: Schema.boolean().default(false).description('显示插件详细日志，生成日记和互动的模型提示词与响应。')
 }).description('空间人设与模型')
 
 const digest = Schema.object({

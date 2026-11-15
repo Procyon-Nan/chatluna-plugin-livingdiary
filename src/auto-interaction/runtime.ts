@@ -6,9 +6,9 @@ import type {
     FeedPage,
     GetPostOptions,
     QzonePost,
+    QzoneComment,
     ReplyOptions
 } from 'qzone-sdk'
-import { isCommentInBotThread } from './state.js'
 import {
     advanceFeedWatermark,
     baselineMonitoredPost,
@@ -21,7 +21,9 @@ import {
     findCommentByKey,
     type FeedWatermark,
     type InteractionRuntimeState,
+    type MonitoredPost,
     isInteractionActorAllowed,
+    isCommentInBotThread,
     isPostAfterWatermark,
     type PendingTrigger,
     postKey,
@@ -39,14 +41,13 @@ import {
 } from './report.js'
 import { QzoneWriteAuthError } from '../qzone/manager.js'
 import type { Logger } from 'cordis'
-import type { QzoneComment } from 'qzone-sdk'
 
 const FEED_PAGE_LIMIT = 6
 const FEED_PAGE_SIZE = 20
 
 export interface AutoInteractionDeps {
     readonly now: () => Date
-    readonly logger: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'>
+    readonly logger: Pick<Logger, 'info' | 'warn' | 'error'>
     readonly isBotOnline: () => boolean
     readonly listFeedPage: (request: {
         readonly scope: 'self' | 'friends'
@@ -72,6 +73,7 @@ export interface AutoInteractionDeps {
 }
 
 export interface AutoInteractionOptions {
+    readonly debug: boolean
     readonly enableFriendPostComment: boolean
     readonly whitelistEnabled: boolean
     readonly allowIds: ReadonlySet<string>
@@ -85,9 +87,7 @@ const postTimestamp = (post: QzonePost, fallback: number): number => {
     return Number.isFinite(parsed) ? parsed : fallback
 }
 
-const mutableRoundStats = (): {
-    -readonly [Key in keyof InteractionRoundStats]: InteractionRoundStats[Key]
-} => ({ ...emptyRoundStats() })
+type RoundStats = { -readonly [K in keyof InteractionRoundStats]: InteractionRoundStats[K] }
 
 export class AutoInteractionRuntime {
     private currentReport: InteractionReport
@@ -143,11 +143,12 @@ export class AutoInteractionRuntime {
             this.#setReport('waiting-bot', '所选机器人上线后自动建立基线')
             return
         }
+        if (this.#options.debug) this.#deps.logger.info('事件：检查新动态和评论')
         if (this.state.baseline !== 'ready') {
             await this.establishBaseline()
             return
         }
-        const stats = mutableRoundStats()
+        const stats: RoundStats = emptyRoundStats()
         this.#roundStartedAt = this.#deps.now().toISOString()
         this.#lastError = null
         this.#setReport('running', '正在轮询', stats)
@@ -155,10 +156,16 @@ export class AutoInteractionRuntime {
             await this.#discoverMonitoredComments(stats)
             if (this.stopped) return
             try { await this.#discoverSelfPosts(stats) }
-            catch { if (!this.stopped) this.#recordError('round-read', stats) }
+            catch {
+                if (this.stopped) return
+                this.#recordError('round-read', stats, '读取自身动态失败')
+            }
             if (this.stopped) return
             try { await this.#discoverFriendPosts(stats) }
-            catch { if (!this.stopped) this.#recordError('round-read', stats) }
+            catch {
+                if (this.stopped) return
+                this.#recordError('round-read', stats, '读取好友动态失败')
+            }
             if (this.stopped) return
             trimMonitoredPosts(this.state, this.#options.monitorLimit)
             await this.#processPending(stats)
@@ -166,39 +173,21 @@ export class AutoInteractionRuntime {
             this.#lastRoundAt = this.#deps.now().toISOString()
             this.#lastRound = { ...stats }
             this.#setReport('ready', '等待下一轮')
-            const idleRound =
-                stats.discovered === 0 &&
-                stats.writeAttempts === 0 &&
-                stats.incompleteSnapshots === 0 &&
-                stats.errors === 0
-            const roundSummary =
-                '自动互动轮次完成：' +
-                `发现 ${stats.discovered}，写入 ${stats.writeAttempts}，` +
-                `不完整快照 ${stats.incompleteSnapshots}，错误 ${stats.errors}`
-            if (idleRound) {
-                this.#deps.logger.debug(roundSummary)
-            } else {
-                this.#deps.logger.info(roundSummary)
-            }
             if (stats.incompleteSnapshots > 0) {
-                this.#deps.logger.warn(
-                    '自动互动：本轮存在评论快照不完整，' +
-                        '相关触发已保留等待后续轮询'
-                )
+                this.#deps.logger.warn('错误：部分评论读取失败，等待下一轮重试')
             }
         } catch {
             if (this.stopped) return
-            this.#recordError('round-read', stats)
+            this.#recordError('round-read', stats, '本轮自动互动中断，等待下一轮重试', 'error')
             this.#lastRoundAt = this.#deps.now().toISOString()
             this.#lastRound = { ...stats }
             this.#setReport('failed', '轮询失败')
-            this.#deps.logger.error('自动互动轮次失败：读取或编排阶段异常')
         }
     }
 
     async establishBaseline(): Promise<void> {
         if (this.stopped) return
-        this.#setReport('baselining', '正在读取当前动态与评论基线')
+        this.#setReport('baselining', '正在读取已有动态和评论')
         const next = createInteractionRuntimeState()
         let selfWatermark: FeedWatermark | null = null
         try {
@@ -261,12 +250,11 @@ export class AutoInteractionRuntime {
             this.#friendFeedCandidateWatermark = null
             this.#lastError = null
             this.#setReport('ready', '启动基线已建立')
-            this.#deps.logger.info('自动互动：启动基线已建立')
         } catch {
             if (this.stopped) return
             this.#lastError = 'baseline'
-            this.#setReport('failed', '启动基线建立失败，将于下轮重新读取')
-            this.#deps.logger.error('自动互动：启动基线建立失败')
+            this.#setReport('failed', '初始化失败，等待下一轮重试')
+            this.#deps.logger.error('错误：启动时读取已有动态和评论失败，等待下一轮重试')
         }
     }
 
@@ -302,7 +290,7 @@ export class AutoInteractionRuntime {
     }
 
     async #discoverMonitoredComments(
-        stats: ReturnType<typeof mutableRoundStats>
+        stats: RoundStats
     ): Promise<void> {
         if (this.#options.monitorLimit === 0 || !this.#botId) return
         for (const monitored of [...this.state.monitoredPosts.values()]) {
@@ -311,41 +299,22 @@ export class AutoInteractionRuntime {
                     post: monitored.post,
                     signal: this.#controller.signal
                 })
-                if (!detail.commentsComplete) {
-                    stats.incompleteSnapshots += 1
-                    continue
-                }
-                for (const trigger of discoverCommentTriggers(
-                    monitored,
-                    detail,
-                    {
-                        botId: this.#botId,
-                        whitelistEnabled: this.#options.whitelistEnabled,
-                        allowIds: this.#options.allowIds,
-                        detectedAt: this.#deps.now().getTime()
-                    }
-                )) {
-                    if (enqueueTrigger(this.state, trigger)) {
-                        stats.discovered += 1
-                    }
-                }
+                if (this.stopped) return
+                this.#collectComments(monitored, detail, stats)
             } catch (error) {
                 if (this.stopped) return
                 if (error instanceof QzoneNotFoundError) {
                     removeMonitoredPost(this.state, monitored.key)
-                    this.#deps.logger.debug(
-                        '自动互动：受监控动态已不存在，已停止监控'
-                    )
+                    if (this.#options.debug) this.#deps.logger.info('事件：目标动态不存在，已停止跟踪')
                     continue
                 }
-                this.#recordError('monitored-read', stats)
-                this.#deps.logger.warn('自动互动：读取监控动态失败')
+                this.#recordError('monitored-read', stats, '读取动态评论失败，等待下一轮重试')
             }
         }
     }
 
     async #discoverSelfPosts(
-        stats: ReturnType<typeof mutableRoundStats>
+        stats: RoundStats
     ): Promise<void> {
         if (this.#options.monitorLimit === 0 || !this.#botId) return
         const posts = await this.#readLatestSelfPosts(
@@ -358,6 +327,7 @@ export class AutoInteractionRuntime {
             if (this.state.monitoredPosts.has(key) || (this.#selfWatermark && !isPostAfterWatermark(post, this.#selfWatermark))) continue
             if (postTimestamp(post, 0) <= baselineAt) continue
             const detail = await this.#readListedPost(post)
+            if (this.stopped) return
             if (!detail) continue
             const monitored = createMonitoredPost(
                 post,
@@ -366,24 +336,13 @@ export class AutoInteractionRuntime {
                 true
             )
             this.state.monitoredPosts.set(key, monitored)
-            if (!detail.commentsComplete) {
-                stats.incompleteSnapshots += 1
-                continue
-            }
-            for (const trigger of discoverCommentTriggers(monitored, detail, {
-                botId: this.#botId,
-                whitelistEnabled: this.#options.whitelistEnabled,
-                allowIds: this.#options.allowIds,
-                detectedAt: this.#deps.now().getTime()
-            })) {
-                if (enqueueTrigger(this.state, trigger)) stats.discovered += 1
-            }
+            this.#collectComments(monitored, detail, stats)
         }
         if (this.#selfWatermark) this.#selfWatermark = advanceFeedWatermark(this.#selfWatermark, posts)
     }
 
     async #discoverFriendPosts(
-        stats: ReturnType<typeof mutableRoundStats>
+        stats: RoundStats
     ): Promise<void> {
         if (!this.#options.enableFriendPostComment) return
         const watermark = this.state.friendFeedWatermark
@@ -446,25 +405,18 @@ export class AutoInteractionRuntime {
             if (visited.has(page.nextCursor)) {
                 this.#friendFeedCursor = undefined
                 this.#friendFeedCandidateWatermark = candidate
-                this.#recordError('round-read', stats)
-                this.#deps.logger.warn('自动互动：好友动态分页重复，将从首页重新读取')
+                this.#recordError('round-read', stats, '重复读取同一页好友动态，等待下一轮重试')
                 return
             }
             cursor = page.nextCursor
             this.#friendFeedCursor = cursor
             this.#friendFeedCandidateWatermark = candidate
-            if (round === FEED_PAGE_LIMIT - 1) {
-                stats.feedPageLimitHits += 1
-                this.#deps.logger.warn(
-                    '自动互动：好友 Feed 扫描达到 6 页保护上限'
-                )
-                return
-            }
         }
+        stats.feedPageLimitHits++
     }
 
     async #processPending(
-        stats: ReturnType<typeof mutableRoundStats>
+        stats: RoundStats
     ): Promise<void> {
         const blockedPosts = new Set<string>()
         let persona: { persona: string; assistantLabel: string } | undefined
@@ -487,7 +439,7 @@ export class AutoInteractionRuntime {
                     removeMonitoredPost(this.state, postKey(trigger.post))
                     continue
                 }
-                this.#recordError('detail-refresh', stats)
+                this.#recordError('detail-refresh', stats, '读取待处理动态失败，等待下一轮重试')
                 continue
             }
             if (!detail.commentsComplete) {
@@ -533,7 +485,11 @@ export class AutoInteractionRuntime {
             }
             if (!persona) {
                 try { persona = await this.#deps.persona() }
-                catch { this.#recordError('persona', stats); return }
+                catch {
+                    if (this.stopped) return
+                    this.#recordError('persona', stats, '读取人设失败，等待下一轮重试')
+                    return
+                }
             }
             if (this.stopped) return
             let decision
@@ -542,12 +498,10 @@ export class AutoInteractionRuntime {
             } catch (error) {
                 if (this.stopped) return
                 if (error instanceof ModelError && (error.code === 'NO_MODEL' || error.code === 'NO_PROVIDER')) {
-                    this.#recordError('model-unavailable', stats)
-                    this.#deps.logger.warn('自动互动：互动模型不可用，本轮剩余任务保留至下次轮询')
+                    this.#recordError('model-unavailable', stats, '互动模型不可用，等待下一轮重试')
                     return
                 }
-                this.#recordError('model-decision', stats)
-                this.#deps.logger.warn(`自动互动：模型决策失败（动态：${trigger.post.id}）`)
+                this.#recordError('model-decision', stats, '互动模型判断失败，等待下一轮重试')
                 continue
             }
             if (this.stopped) return
@@ -557,47 +511,54 @@ export class AutoInteractionRuntime {
                 continue
             }
             stats.writeAttempts += 1
+            const isComment = trigger.kind === 'friend-post'
+            const action = isComment ? '评论' : '回复'
+            let result: CommentMutationResult
             try {
-                const result =
-                    trigger.kind === 'friend-post'
-                        ? await this.#deps.comment({
-                              post: detail,
-                              content: decision.content.trim(),
-                              signal: this.#controller.signal
-                          })
-                        : await this.#deps.reply({
-                              post: detail,
-                              comment: activeComment!,
-                              content: decision.content.trim(),
-                              signal: this.#controller.signal
-                          })
-                if (this.stopped) return
-                this.state.pendingTriggers.delete(trigger.key)
-                if (result.outcome === 'verified' || result.outcome === 'already-applied') stats.verified += 1
-                if (result.outcome === 'accepted') stats.accepted += 1
-                if (result.outcome === 'unknown') stats.unknown += 1
-                if (trigger.kind === 'friend-post') {
-                    await this.#startFriendThread(detail, result, stats)
-                } else {
-                    await this.#refreshSeenAfterWrite(trigger.post, stats)
-                }
+                const request = { post: detail, content: decision.content.trim(), signal: this.#controller.signal }
+                result = isComment
+                    ? await this.#deps.comment(request)
+                    : await this.#deps.reply({ ...request, comment: activeComment! })
             } catch (error) {
                 if (this.stopped) return
                 this.state.pendingTriggers.delete(trigger.key)
-                this.#recordError(
-                    error instanceof QzoneWriteAuthError
-                        ? 'write-auth'
-                        : 'write',
-                    stats
-                )
+                const kind = error instanceof QzoneWriteAuthError ? 'write-auth' : 'write'
+                this.#recordError(kind, stats, `发送${action}失败`)
+                continue
             }
+            if (this.stopped) return
+            this.state.pendingTriggers.delete(trigger.key)
+            switch (result.outcome) {
+                case 'verified':
+                    stats.verified += 1
+                    if (isComment) this.#deps.logger.info('事件：已在一条好友动态下发表评论')
+                    else {
+                        const owner = trigger.kind === 'self-comment' ? '自己的' : '好友的'
+                        this.#deps.logger.info(`事件：已在${owner}动态下回复一条评论`)
+                    }
+                    break
+                case 'already-applied':
+                    stats.verified += 1
+                    this.#deps.logger.info(`事件：${action}已存在`)
+                    break
+                case 'accepted':
+                    stats.accepted += 1
+                    this.#deps.logger.info(`事件：${action}已受理，结果待核实`)
+                    break
+                case 'unknown':
+                    stats.unknown += 1
+                    this.#deps.logger.warn(`错误：${action}发送结果未知`)
+                    break
+            }
+            if (isComment) await this.#startFriendThread(detail, result, stats)
+            else await this.#refreshSeenAfterWrite(trigger.post, stats)
         }
     }
 
     async #startFriendThread(
         detail: QzonePost,
         result: CommentMutationResult,
-        stats: ReturnType<typeof mutableRoundStats>
+        stats: RoundStats
     ): Promise<void> {
         if (this.#options.monitorLimit === 0 || !this.#botId) return
         const reference = result.comment ?? result.reference
@@ -623,47 +584,46 @@ export class AutoInteractionRuntime {
 
     async #refreshSeenAfterWrite(
         post: QzonePost | PendingTrigger['post'],
-        stats: ReturnType<typeof mutableRoundStats>
+        stats: RoundStats
     ) {
         const monitored = this.state.monitoredPosts.get(postKey(post))
-        const botId = this.#botId
-        if (!monitored || !botId) return
+        if (!monitored) return
         try {
             const refreshed = await this.#deps.getPost({
                 post,
                 signal: this.#controller.signal
             })
             if (this.stopped) return
-            if (refreshed.commentsComplete) {
-                for (const trigger of discoverCommentTriggers(
-                    monitored,
-                    refreshed,
-                    {
-                        botId,
-                        whitelistEnabled: this.#options.whitelistEnabled,
-                        allowIds: this.#options.allowIds,
-                        detectedAt: this.#deps.now().getTime()
-                    }
-                )) {
-                    if (enqueueTrigger(this.state, trigger)) {
-                        stats.discovered += 1
-                    }
-                }
-            }
-        } catch {
+            this.#collectComments(monitored, refreshed, stats)
+        } catch (error) {
             // 写入终态已经确定；刷新失败不得改变终态或触发重发。
-            if (!this.stopped) {
-                this.#recordError('detail-refresh', stats)
+            if (this.stopped) return
+            if (error instanceof QzoneNotFoundError) {
+                removeMonitoredPost(this.state, monitored.key)
+                return
             }
+            this.#recordError('detail-refresh', stats, '读取最新评论失败，等待下一轮重试')
         }
     }
 
-    #recordError(
-        kind: InteractionErrorKind,
-        stats: ReturnType<typeof mutableRoundStats>
-    ): void {
+    #collectComments(monitored: MonitoredPost, detail: QzonePost, stats: RoundStats) {
+        if (!detail.commentsComplete) {
+            stats.incompleteSnapshots++
+            return
+        }
+        const triggers = discoverCommentTriggers(monitored, detail, {
+            botId: this.#botId!, whitelistEnabled: this.#options.whitelistEnabled,
+            allowIds: this.#options.allowIds, detectedAt: this.#deps.now().getTime()
+        })
+        for (const trigger of triggers) {
+            if (enqueueTrigger(this.state, trigger)) stats.discovered++
+        }
+    }
+
+    #recordError(kind: InteractionErrorKind, stats: RoundStats, message: string, level: 'warn' | 'error' = 'warn') {
         stats.errors += 1
         this.#lastError = kind
+        this.#deps.logger[level](`错误：${message}`)
     }
 
     #setReport(

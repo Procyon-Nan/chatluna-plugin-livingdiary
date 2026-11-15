@@ -63,6 +63,7 @@ export function registerCommands(ctx: Context, config: Config, service: QzoneSer
                     : await service.listFeedPage({ scope: 'self', limit })
                 return h.escape(formatFeedList(page.items))
             } catch (error) {
+                ctx.logger.warn('错误：读取空间动态失败')
                 return h.escape(readableError(error, '读取动态失败'))
             }
         })

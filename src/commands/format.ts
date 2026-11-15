@@ -26,7 +26,7 @@ const formatEpochSeconds = (value: number | null): string =>
     formatTime(value === null ? null : value * 1000)
 
 export function formatFeedList(items: readonly QzonePost[]): string {
-    if (items.length === 0) return '没有获取到动态。'
+    if (items.length === 0) return '暂无动态。'
     return items
         .map((post, index) => {
             const liked = post.liked ? '・已赞' : ''

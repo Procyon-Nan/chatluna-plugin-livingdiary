@@ -29,7 +29,7 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
         let level: 'info' | 'warn' | 'error' = 'info'
         if (result === 'failed' || result === 'model-failed' || result === 'publish-failed') level = 'error'
         else if (result === 'preset-missing') level = 'warn'
-        ctx.logger[level]('每日总结：%s（%s）：%s', settings.presetId, trigger, detail)
+        ctx.logger[level]('每日日记：%s（%s）：%s', settings.presetId, trigger === 'scheduled' ? '定时' : '手动', detail)
         return { triggeredAt: startedAt.toISOString(), trigger, result, detail }
     }
     const preset = ctx.presets.get(settings.presetId)
@@ -67,7 +67,7 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
     try {
         const decision = await decideDigest(ctx, settings.model, prompts, signal, settings.debug ?? false)
         signal.throwIfAborted()
-        if (decision.action === 'skip') return report('skipped-by-model', '没有可发布内容。')
+        if (decision.action === 'skip') return report('skipped-by-model', '模型决定跳过本次发布。')
         content = decision.content
     } catch (error) {
         signal.throwIfAborted()
@@ -78,20 +78,20 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
         id = await journal.save({ presetId: preset.id, presetName: preset.name, content, memories: referenceMemories }, startedAt)
     } catch (error) {
         ctx.logger.error('保存日记失败：%s', error)
-        return report('failed', '未能保存日记，未发起空间发布。')
+        return report('failed', '保存日记失败。')
     }
     signal.throwIfAborted()
     try {
         await journal.beginPublication(id)
     } catch (error) {
         ctx.logger.error('记录日记 %s 的发布尝试失败：%s', id, error)
-        return report('failed', '未能记录发布尝试，日记已保存，未发起空间发布。')
+        return report('failed', '日记已保存，记录发布尝试失败。')
     }
     let verified = false
-    let detail = '未能按发布回执中的动态 ID 读到日记。'
+    let detail = '日记发布结果核验失败。'
     try {
         verified = await qzone.publishDiary({ content, signal })
-        if (verified) detail = '已按回执中的动态 ID 读到日记。'
+        if (verified) detail = '已按回执中的动态 ID 核实发布结果。'
     } catch (error) {
         detail = readableError(error, '发布每日动态失败')
     }
@@ -99,7 +99,7 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
         await journal.finishPublication(id, verified)
     } catch (error) {
         ctx.logger.error('更新日记 %s 的发布状态失败：%s', id, error)
-        detail += ' 日记已保存，但本地发布状态未能更新。'
+        detail += ' 更新本地发布状态失败。'
     }
     if (!verified) signal.throwIfAborted()
     return report(verified ? 'published' : 'publish-failed', detail)

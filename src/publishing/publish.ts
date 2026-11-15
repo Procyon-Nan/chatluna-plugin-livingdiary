@@ -16,7 +16,7 @@ export interface PublishInput {
 export function readableError(error: unknown, prefix: string): string {
     let reason: string
     if (error instanceof QzoneWriteAuthError) {
-        reason = error.rebound ? 'QQ 空间登录态已续绑。请先核对空间动态，再决定是否重新发布。' : 'QQ 空间登录态失效，自动续绑不可用，请人工处理。'
+        reason = error.rebound ? 'QQ 空间登录态已续绑，请核对发布结果。' : 'QQ 空间登录态失效，自动续绑不可用，请人工处理。'
     } else if (error instanceof QzoneAuthError) {
         reason = 'QQ 空间登录态失效，请稍后重试。'
     } else if (error instanceof QzoneCancelledError) {
@@ -33,10 +33,10 @@ export function readableError(error: unknown, prefix: string): string {
 }
 
 export const publishOutcomeMessages: Record<MutationOutcome, string> = {
-    verified: '发布成功（已经读取确认）。',
-    'already-applied': '空间已处于目标状态，未重复写入。',
-    accepted: '空间已接受发布请求，稍后可用 qzone.feeds 核对。',
-    unknown: '无法确认是否已发布。禁止自动重发，请用 qzone.feeds 人工核对。'
+    verified: '发布成功。',
+    'already-applied': '空间已处于目标状态。',
+    accepted: '发布请求已受理，可用 qzone.feeds 核对。',
+    unknown: '发布结果未知，可用 qzone.feeds 核对。'
 }
 
 /** 命令与工具在所有配图就绪后只提交一次。 */

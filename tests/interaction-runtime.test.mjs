@@ -87,6 +87,41 @@ test('自己空间只监控真实 SDK 当前账号的个人主页；混入别人
     assert.deepEqual(requests, Array(2).fill(['/mqzone/profile', '100']))
 })
 
+test('正常轮询安静，调试时每轮提示一次；读取失败与没有评论分别处理', async () => {
+    for (const debug of [false, true]) {
+        const f = fixture({ debug })
+        const lines = []
+        f.deps.logger.info = f.deps.logger.warn = line => lines.push(line)
+        await f.runtime.runRound()
+        await f.runtime.runRound()
+        const check = '事件：检查新动态和评论'
+        assert.deepEqual(lines, debug ? [check, check] : [])
+        lines.length = 0
+        f.deps.getPost = async () => { throw Error('network') }
+        await f.runtime.runRound()
+        const failure = '错误：读取动态评论失败，等待下一轮重试'
+        assert.deepEqual(lines, debug ? [check, failure] : [failure])
+    }
+})
+
+test('自动回复按空间回执报告结果，不把受理或未知结果写成成功', async () => {
+    const f = fixture()
+    const lines = []
+    f.deps.logger.info = f.deps.logger.warn = line => lines.push(line)
+    await f.runtime.runRound()
+    for (const [outcome, message] of [
+        ['verified', '事件：已在自己的动态下回复一条评论'],
+        ['accepted', '事件：回复已受理，结果待核实'],
+        ['unknown', '错误：回复发送结果未知'],
+        ['already-applied', '事件：回复已存在']
+    ]) {
+        f.self.comments.push(comment(outcome))
+        f.deps.reply = async () => ({ outcome })
+        await f.runtime.runRound()
+        assert.deepEqual(lines.splice(0), [message])
+    }
+})
+
 test('已删除动态不阻断基线或扫描；临时网络错误保留下一轮重试', async () => {
     const f = fixture()
     f.own.unshift(post('gone-before-start', '100'))
@@ -182,6 +217,29 @@ test('先评论新的好友动态，随后只跟进自己的评论串及允许�
     await f.runtime.runRound()
     assert.deepEqual(f.replies.map(r => r.target), ['reply'])
     assert.equal(f.decisions[1].activeComment.id, 'reply')
+})
+
+test('好友评论已发表但最新评论没读全：提醒下轮重读，不重发评论', async () => {
+    const f = fixture({ enableFriendPostComment: true })
+    const lines = []
+    f.deps.logger.info = f.deps.logger.warn = line => lines.push(line)
+    await f.runtime.runRound()
+    const friend = post('friend', '200', [], 1)
+    f.rows.set(friend.id, friend)
+    f.friends.push(friend)
+    const submit = f.deps.comment
+    f.deps.comment = async request => {
+        const result = await submit(request)
+        friend.commentsComplete = false
+        return result
+    }
+    await f.runtime.runRound()
+    assert.deepEqual(lines, ['事件：已在一条好友动态下发表评论', '错误：部分评论读取失败，等待下一轮重试'])
+    assert.equal(f.runtime.report.round.incompleteSnapshots, 1)
+    friend.commentsComplete = true
+    await f.runtime.runRound()
+    assert.equal(f.runtime.report.round.incompleteSnapshots, 0)
+    assert.equal(f.comments.length, 1)
 })
 
 test('写之前刷新详情：已删除的好友动态出队、普通网络错误留待下轮，SDK 写失败绝不重发', async () => {

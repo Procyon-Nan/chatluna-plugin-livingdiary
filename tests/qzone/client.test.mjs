@@ -12,6 +12,32 @@ const rebind = { minIntervalSeconds: 0, backoffSeconds: 2, maxBackoffSeconds: 3,
 const logger = { info() {}, error() {}, warn() {} }
 const auth = () => { throw new QzoneAuthError('expired') }
 
+test('空间请求不逐条打印，调试时仅提示换入口，最终失败交给调用方', async t => {
+    let denied = false
+    t.mock.method(globalThis, 'fetch', async url => {
+        const path = new URL(url).pathname
+        if (path === '/mqzone/profile') return new Response('invalid profile')
+        assert.ok(path.endsWith('emotion_cgi_msglist_v6'))
+        return denied ? new Response(null, { status: 403 }) : Response.json({ code: 0, msglist: [] })
+    })
+    const bot = { selfId: '1234', platform: 'onebot', status: 1, internal: { getCookies: async () => 'p_skey=test; uin=o1234' } }
+    for (const debug of [false, true]) {
+        denied = false
+        const info = [], errors = []
+        const service = createQzoneService({ satori: { bots: [bot] },
+            logger: { info: line => info.push(line), warn: assert.fail, error: line => errors.push(line) }
+        }, { platform: 'auto', debug })
+        try {
+            await service.listFeedPage({ scope: 'profile', userId: '2345' })
+            assert.deepEqual(info, debug ? ['事件：读取动态列表失败，切换接口继续读取'] : [])
+            assert.deepEqual(errors, [])
+            denied = true
+            await assert.rejects(service.listFeedPage({ scope: 'profile', userId: '3456' }))
+            assert.deepEqual(errors, [])
+        } finally { await service.close() }
+    }
+})
+
 test('日记只认可回执 ID 对应的详情，列表唯一命中同文也不算；每次只提交一次', async t => {
     const content = '今天的日记'
     for (const scenario of ['详情命中', '详情缺失', '同文命中', '列表为空', '回执不明']) {
@@ -116,7 +142,7 @@ test('状态不索取 Cookie，所选机器人离线时读操作不连接 SDK', 
     assert.equal(service.status().client.initialized, false)
     raw.status = 0
     assert.equal(service.status().bot, null)
-    await assert.rejects(service.listFeedPage({ scope: 'self' }), /没有可用/)
+    await assert.rejects(service.listFeedPage({ scope: 'self' }), /未找到.*在线/)
     await service.close()
 })
 

@@ -97,5 +97,5 @@ test('发布命令与工具共用图片读取；整批成功后只提交一次�
         ['秋 天', [['local.png', 'ab'], ['local.png', 'ab'], ['hello there.png', 'cd']]]
     ])
     assert.equal(result.outcome, 'unknown')
-    assert.match(result.message, /禁止自动重发/)
+    assert.match(result.message, /发布结果未知/)
 })

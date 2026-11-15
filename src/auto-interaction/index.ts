@@ -16,7 +16,7 @@ export function registerAutoInteraction(ctx: Context, config: Config, qzone: Qzo
     const model = config.subModel.trim()
     const enabled = config.enableFriendPostComment || monitorLimit > 0
     const allow = normalizeInteractionAllowList(config.interactionAllowUserIds)
-    if (allow.invalidCount) ctx.logger.warn(`自动互动：忽略了 ${allow.invalidCount} 个无效 QQ 号`)
+    if (allow.invalidCount) ctx.logger.warn(`自动互动：已忽略 ${allow.invalidCount} 个无效 QQ 号`)
     const missing: string[] = []
     if (!presetId) missing.push('人设预设')
     if (!model) missing.push('互动模型')
@@ -51,7 +51,7 @@ export function registerAutoInteraction(ctx: Context, config: Config, qzone: Qzo
         },
         decide: (input, signal) => decideInteraction(ctx, { ...input, model, debug: config.debug }, signal)
     }, {
-        enableFriendPostComment: config.enableFriendPostComment,
+        debug: config.debug, enableFriendPostComment: config.enableFriendPostComment,
         whitelistEnabled: config.enableInteractionWhitelist, allowIds: allow.ids,
         monitorLimit, maxWritesPerRound: maxWrites
     })

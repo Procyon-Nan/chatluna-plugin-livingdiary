@@ -64,10 +64,10 @@ export async function decideDigest(ctx: Context, model: string, prompts: { syste
         signal.throwIfAborted()
         try {
             const messages = [task, ...feedback]
-            if (debug) ctx.logger.info('每日总结：model.prompt（%s，第 %d 次）\n%s', model, attempt, JSON.stringify({ system: prompts.systemPrompt, messages }))
+            if (debug) ctx.logger.info('每日日记：模型输入（%s，第 %d 次）\n%s', model, attempt, JSON.stringify({ system: prompts.systemPrompt, messages }))
             const result = await callModel(ctx, { model, system: prompts.systemPrompt, messages,
                 toolSpecs: [decisionTool], toolChoice: 'required', purpose: 'livingdiary.digest', cache: false }, signal)
-            if (debug) ctx.logger.info('每日总结：model.response（%s，第 %d 次）\n%s', model, attempt, JSON.stringify(result.content))
+            if (debug) ctx.logger.info('每日日记：模型响应（%s，第 %d 次）\n%s', model, attempt, JSON.stringify(result.content))
             try {
                 return decisionOf(result.toolCalls)
             } catch (error) {
@@ -77,7 +77,7 @@ export async function decideDigest(ctx: Context, model: string, prompts: { syste
         } catch (error) {
             signal.throwIfAborted()
             lastReason = modelFailure(error)
-            if (debug) ctx.logger.warn('每日总结：model.failed（%s，第 %d 次）：%s', model, attempt, lastReason)
+            if (debug) ctx.logger.warn('每日日记：模型调用失败（%s，第 %d 次）：%s', model, attempt, lastReason)
         }
         if (attempt < 7) await wait(5000, signal)
     }

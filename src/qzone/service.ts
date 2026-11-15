@@ -4,7 +4,7 @@ import type { Config } from '../config.js'
 import { acquireQzoneCookies, canonicalQQ, NoBotAvailableError, selectCookieBot } from './cookie-source.js'
 import { QzoneManager } from './manager.js'
 
-type QzoneConfig = Pick<Config, 'platform' | 'selfId' | 'rebindMinIntervalSeconds' | 'rebindBackoffSeconds' | 'rebindMaxConsecutiveFailures'>
+type QzoneConfig = Pick<Config, 'platform' | 'selfId' | 'debug' | 'rebindMinIntervalSeconds' | 'rebindBackoffSeconds' | 'rebindMaxConsecutiveFailures'>
 
 export function createQzoneService(ctx: Context, config: QzoneConfig) {
     let boundSelfId = config.selfId
@@ -13,7 +13,7 @@ export function createQzoneService(ctx: Context, config: QzoneConfig) {
         currentBot,
         acquire: () => {
             const bot = currentBot()
-            if (!bot) throw new NoBotAvailableError('没有可用的 OneBot/Milky 机器人（未上线或 platform/selfId 不匹配）')
+            if (!bot) throw new NoBotAvailableError('未找到与 platform/selfId 匹配的在线 OneBot/Milky 机器人')
             return acquireQzoneCookies(bot)
         },
         createClient: (session, observe) => {
@@ -21,12 +21,10 @@ export function createQzoneService(ctx: Context, config: QzoneConfig) {
                 session,
                 logger(event) {
                     observe?.(event)
-                    const parts = ['qzone-sdk', event.phase, event.endpoint]
-                    if (event.statusCode !== undefined) parts.push(`HTTP ${event.statusCode}`)
-                    if (event.errorCode) parts.push(`code=${event.errorCode}`)
-                    if (event.retryCount !== undefined) parts.push(`retry=${event.retryCount}`)
-                    if (event.durationMs !== undefined) parts.push(`${event.durationMs}ms`)
-                    ctx.logger[event.level](parts.filter(Boolean).join(' '))
+                    if (config.debug && event.phase === 'read.fallback') {
+                        const what = event.endpoint?.startsWith('post.detail') ? '动态详情' : '动态列表'
+                        ctx.logger.info(`事件：读取${what}失败，切换接口继续读取`)
+                    }
                 }
             })
             boundSelfId = canonicalQQ(session.accountId)
