@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Context } from 'cordis'
-import Prompt from '@chatluna/prompt'
-import { chatKind } from '@chatluna/preset'
-import { characterKind } from '@chatluna/engine-character'
 import { runDailyDigest } from '../lib/daily-digest/workflow.js'
 import { decideDigest } from '../lib/daily-digest/model.js'
 
@@ -15,23 +11,19 @@ const call = input => ({ type: 'tool-call', toolCallId: 'result', toolName: 'pub
 const result = input => ({ finish: { kind: 'tool-calls' }, toolCalls: [call(input)], content: [call(input)] })
 const quiet = { info() {}, warn() {}, error() {} }
 
-async function fixture(t, kind = 'chat') {
-    const cordis = new Context()
-    await cordis.plugin(Prompt)
-    t.after(() => cordis.fiber.dispose())
-    cordis.prompt.variable({ name: 'display', mutable: false }, ({ env }) => env.botName)
-    const blocks = [{ id: 'p', content: '人设：{display}', order: 0, enabled: true, zone: 'system', role: 'system' },
-        { id: 'history', content: '这不是本次群聊', order: 1, enabled: true, zone: 'context', role: 'user' }]
-    const data = kind === 'character' ? { persona: '人设：{display}', style: '悠闲', example: '你好。', context: '这不是本次群聊' }
-        : { blocks }
-    const preset = { id: 'p', name: '人设 A', kind, status: 'ok', data }
+function fixture() {
+    const preset = { id: 'p', name: '人设 A', status: 'ok' }
     const calls = [], writes = [], reads = []
     const rows = Array.from({ length: 120 }, (_, i) => ({
         id: `m${i}`, status: 'active', createdAt: new Date(+midnight + i * 60000), type: 'plan', content: `记忆[${i}]`, sentiment: '愉快'
     })).reverse()
-    const ctx = { logger: quiet, prompt: cordis.prompt,
-        presets: { get: id => id === preset.id ? preset : undefined, blocks: p => (p.kind === 'chat' ? chatKind : characterKind).blocks(p.id, p.data) },
-        get: () => ({ repository: { listEntriesByPreset(id) { reads.push(id); return rows } } }),
+    const memory = {
+        repository: { listEntriesByPreset(id) { reads.push(['memories', id]); return rows } },
+        presetPersona: { readCard(id) { reads.push(['card', id]); return '用星星打招呼。' } }
+    }
+    const ctx = { logger: quiet,
+        presets: { get: id => id === preset.id ? preset : undefined },
+        get: () => memory,
         chatluna: { chat(input) { calls.push(input); return Promise.resolve(result({ action: 'publish', content: text })) } }
     }
     const qzone = { async publishDiary(input) { writes.push(input); return true } }
@@ -43,53 +35,49 @@ async function fixture(t, kind = 'chat') {
     }
     const run = (overrides = {}, signal = new AbortController().signal) => runDailyDigest(ctx, qzone, journal,
         { ...settings, ...overrides }, 'manual', signal, start)
-    return { ctx, qzone, journal, saved, outcomes, rows, preset, reads, calls, writes, run }
+    return { ctx, qzone, journal, saved, outcomes, rows, memory, reads, calls, writes, run }
 }
 
-for (const kind of ['chat', 'character']) {
-    test(`${kind} 预设的渲染和当日取材：按创建时间取最近 100 条，整段正文只写一次`, async t => {
-        const api = await fixture(t, kind)
-        const base = { ...api.rows[0], content: '排除项', updatedAt: start }
-        api.rows.unshift({ ...base, status: 'archived' }, { ...base, createdAt: new Date(+midnight - 1) },
-            { ...base, createdAt: new Date(+start + 1) })
-        const { result: outcome } = await api.run()
-        assert.equal(outcome, 'published')
-        assert.deepEqual(api.reads, ['p'])
-        assert.equal(api.calls.length, 1)
-        const request = api.calls[0]
-        assert.equal(request.model, '@large')
-        assert.match(request.system, /人设：人设 A/)
-        if (kind === 'character') assert.match(request.system, /悠闲[\s\S]*你好。/)
-        assert.doesNotMatch(request.system, /\{display\}|这不是本次群聊/)
-        assert.deepEqual(request.toolSpecs.map(x => x.name), ['publish_daily_digest'])
-        const prompt = request.messages[0].content[0].text
-        assert.doesNotMatch(prompt, /排除项/)
-        assert.deepEqual([...prompt.matchAll(/记忆\[(\d+)\]/g)].map(m => +m[1]), Array.from({ length: 100 }, (_, i) => i + 20))
-        assert.match(prompt, /计划\|情绪:愉快/)
-        assert.equal(api.writes.length, 1)
-        assert.equal(api.writes[0].content, text)
-        assert.deepEqual(api.saved, [{ at: start, entry: { presetId: 'p', presetName: '人设 A', content: text,
-            memories: Array.from({ length: 100 }, (_, i) => ({ id: `m${i + 20}`, content: `记忆[${i + 20}]` })) } }])
-        assert.deepEqual(api.outcomes, [{ id: '1', status: 'published' }])
-    })
-}
+test('写作使用同一预设的人设卡片和最近 100 条当日记忆，整篇只发布一次', async () => {
+    const api = fixture()
+    const base = { ...api.rows[0], content: '排除项', updatedAt: start }
+    api.rows.unshift({ ...base, status: 'archived' }, { ...base, createdAt: new Date(+midnight - 1) },
+        { ...base, createdAt: new Date(+start + 1) })
+    const { result: outcome } = await api.run()
+    assert.equal(outcome, 'published')
+    assert.deepEqual(api.reads, [['memories', 'p'], ['card', 'p']])
+    assert.equal(api.calls.length, 1)
+    const request = api.calls[0]
+    assert.equal(request.model, '@large')
+    assert.ok(request.system.includes('<preset_context>\n用星星打招呼。\n</preset_context>'))
+    assert.deepEqual(request.toolSpecs.map(x => x.name), ['publish_daily_digest'])
+    const prompt = request.messages[0].content[0].text
+    assert.doesNotMatch(prompt, /排除项/)
+    assert.deepEqual([...prompt.matchAll(/记忆\[(\d+)\]/g)].map(m => +m[1]), Array.from({ length: 100 }, (_, i) => i + 20))
+    assert.match(prompt, /计划\|情绪:愉快/)
+    assert.equal(api.writes.length, 1)
+    assert.equal(api.writes[0].content, text)
+    assert.deepEqual(api.saved, [{ at: start, entry: { presetId: 'p', presetName: '人设 A', content: text,
+        memories: Array.from({ length: 100 }, (_, i) => ({ id: `m${i + 20}`, content: `记忆[${i + 20}]` })) } }])
+    assert.deepEqual(api.outcomes, [{ id: '1', status: 'published' }])
+})
 
-test('无有效预设、读记忆失败或无记忆时均不调用模型或发布；无法渲染的变量不会进入模型', async t => {
-    const api = await fixture(t)
+test('无预设、读取失败或人设为空时不调用模型或发布', async () => {
+    const api = fixture()
     assert.equal((await api.run({ presetId: 'missing' })).result, 'preset-missing')
     assert.deepEqual(api.reads, [])
-    api.preset.data.blocks[0].content = '{not_registered}'
+    api.memory.presetPersona.readCard = () => ''
     assert.equal((await api.run()).result, 'preset-missing')
-    api.rows.length = 0
-    assert.equal((await api.run()).result, 'skipped-empty')
-    api.ctx.get = () => ({ repository: { listEntriesByPreset() { throw Error('read failed') } } })
+    api.memory.presetPersona.readCard = () => { throw Error('card offline') }
+    assert.equal((await api.run()).result, 'failed')
+    api.memory.repository.listEntriesByPreset = () => { throw Error('read failed') }
     assert.equal((await api.run()).result, 'failed')
     assert.deepEqual(api.calls, [])
     assert.deepEqual(api.writes, [])
 })
 
-test('当日窗口包含本地零点和任务开始时刻，不包含前一天或任务开始之后', async t => {
-    const api = await fixture(t)
+test('当日窗口包含本地零点和任务开始时刻，不包含前一天或任务开始之后', async () => {
+    const api = fixture()
     api.rows.length = 0
     for (const [label, time] of [['昨夜', +midnight - 1], ['本地零点', +midnight], ['开始时刻', +start], ['未来', +start + 1]]) {
         api.rows.push({ id: label, type: 'plan', status: 'active', createdAt: new Date(time), content: label })
@@ -100,20 +88,21 @@ test('当日窗口包含本地零点和任务开始时刻，不包含前一天�
     assert.doesNotMatch(body, /昨夜|未来/)
 })
 
-test('当天仅整理或编辑了旧记忆时，日记跳过，不调用模型也不发帖', async t => {
-    const api = await fixture(t)
+test('当天仅整理或编辑了旧记忆时，日记跳过，不调用模型也不发帖', async () => {
+    const api = fixture()
     api.rows.length = 0
     api.rows.push({
         type: 'fact', status: 'active', content: '今天修订的旧事',
         createdAt: new Date(+midnight - 1), updatedAt: start
     })
     assert.equal((await api.run()).result, 'skipped-empty')
+    assert.deepEqual(api.reads, [['memories', 'p']])
     assert.equal(api.calls.length, 0)
     assert.equal(api.writes.length, 0)
 })
 
-test('关闭空间发布时，写好的正文和参考记忆仍存入日记册', async t => {
-    const api = await fixture(t)
+test('关闭空间发布时，写好的正文和参考记忆仍存入日记册', async () => {
+    const api = fixture()
     api.rows.splice(1)
     api.journal.beginPublication = assert.fail
     const { result } = await api.run({ publishDiaryToQzone: false })
@@ -124,8 +113,8 @@ test('关闭空间发布时，写好的正文和参考记忆仍存入日记册',
     assert.deepEqual(api.outcomes, [])
 })
 
-test('模型跳过则不存不发；未验证和空间写入异常都记为发布失败，不重发', async t => {
-    const api = await fixture(t)
+test('模型跳过则不存不发；未验证和空间写入异常都记为发布失败，不重发', async () => {
+    const api = fixture()
     api.ctx.chatluna.chat = () => Promise.resolve(result({ action: 'skip' }))
     assert.equal((await api.run()).result, 'skipped-by-model')
     assert.deepEqual(api.saved, [])
@@ -140,8 +129,8 @@ test('模型跳过则不存不发；未验证和空间写入异常都记为发�
     assert.deepEqual(api.outcomes.map(row => row.status), ['failed', 'failed'])
 })
 
-test('先存日记再发空间；归档失败不发送，回写失败保留已知的发布结果', async t => {
-    const api = await fixture(t)
+test('先存日记再发空间；归档失败不发送，回写失败保留已知的发布结果', async () => {
+    const api = fixture()
     const save = api.journal.save
     api.journal.save = async () => { throw Error('database offline') }
     assert.equal((await api.run()).result, 'failed')
@@ -173,8 +162,8 @@ test('格式错误带工具反馈纠正；模型异常共用七次预算，两�
         error.message.includes('NO_MODEL') && !error.message.includes('SECRET'))
 })
 
-test('停用会中止在途模型与等待登录的发布；已提交的写结果仍保留', async t => {
-    const api = await fixture(t)
+test('停用会中止在途模型与等待登录的发布；已提交的写结果仍保留', async () => {
+    const api = fixture()
     const first = new AbortController()
     let began
     const called = new Promise(resolve => { began = resolve })

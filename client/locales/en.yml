@@ -46,7 +46,7 @@ guide.interactionConfig.title: Choose who to interact with
 guide.comments.title: Set up comments and replies
 guide.account: Keep a OneBot or Milky bot online to use its Qzone. If multiple accounts are connected, enter the bot’s QQ number in selfId. Add your own QQ number to allowUserIds to use Qzone commands.
 guide.diary: Write your first diary entry
-guide.configureDiary: Enable LivingMemory, then choose a Qzone preset and a diary model (mainModel). The bot writes in that preset’s voice, using its active memories created today.
+guide.configureDiary: Enable LivingMemory, then choose a Qzone preset and a diary model (mainModel). The diary uses the preset’s persona card from LivingMemory and its active memories created today. If no card is saved, it uses the preset’s system text.
 guide.schedule: Scheduled writing is on by default. It starts at 23:50 server time and uses up to 100 recent memories. You can run qzone.digest even with the schedule off. No entry is written if there is no material or if the model decides to skip.
 guide.read: Every entry is saved in the journal. Entries are also posted to Qzone by default. Turn off publishDiaryToQzone to keep them in the journal only. Browse by preset and date to see the text on the left and its reference memories on the right.
 guide.commands: Commands and posting from chat

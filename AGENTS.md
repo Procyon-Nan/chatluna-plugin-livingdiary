@@ -45,7 +45,7 @@ livingdiary/
 ├── src/
 │   ├── index.ts     # 装配空间客户端、命令、发布工具、日记与自动互动
 │   ├── config.ts    # 账号、模型、日记、互动及各自的授权设置
-│   ├── persona.ts   # 渲染空间日记与互动共用的人设
+│   ├── persona.ts   # 为自动评论与回复渲染空间预设的人设
 │   ├── model.ts     # 随后台任务取消单步模型调用
 │   ├── image.ts     # 限制图片读取大小、下载时限和取消
 │   ├── prompt-format.ts # 提示词数据块的 XML 转义

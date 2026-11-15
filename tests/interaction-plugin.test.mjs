@@ -5,8 +5,27 @@ import AI from '@chatluna/ai-runtime'
 import * as verbs from '@chatluna/ai-runtime/ops'
 import ChatLuna from '@chatluna/core'
 import Prompt from '@chatluna/prompt'
+import { chatKind } from '@chatluna/preset'
+import { characterKind } from '@chatluna/engine-character'
+import { renderPersona } from '../lib/persona.js'
 import { Config } from '../lib/config.js'
 import { registerAutoInteraction } from '../lib/auto-interaction/index.js'
+
+test('独立互动渲染 chat 和 character 的系统段，保留角色风格与示例', async t => {
+    const ctx = new Context()
+    t.after(() => ctx.fiber.dispose())
+    await ctx.plugin(Prompt)
+    ctx.prompt.variable({ name: 'display', mutable: false }, ({ env }) => env.botName)
+    const render = (kind, data) => renderPersona({
+        prompt: ctx.prompt, presets: { blocks: preset => kind.blocks(preset.id, preset.data) }
+    }, { id: 'p', name: '人设 A', kind: kind.id, data }, new Date())
+    const blocks = [{ id: 'p', content: '人设：{display}', enabled: true, zone: 'system', role: 'system' }]
+    assert.equal(await render(chatKind, { blocks }), '人设：人设 A')
+    const data = { persona: '人设：{display}', style: '悠闲', example: '你好。', context: '当前群聊' }
+    const persona = await render(characterKind, data)
+    assert.match(persona, /人设：人设 A[\s\S]*悠闲[\s\S]*你好。/)
+    assert.doesNotMatch(persona, /当前群聊/)
+})
 
 test('真实模型调度：无需 LivingMemory，按空间人设与互动模型只评论白名单好友的新动态', async t => {
     const start = Date.UTC(2026, 10, 10, 12)

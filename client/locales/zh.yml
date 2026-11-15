@@ -46,7 +46,7 @@ guide.interactionConfig.title: 选择互动对象
 guide.comments.title: 设置评论和回复
 guide.account: 保持 OneBot 或 Milky 机器人在线，LivingDiary 会使用它的空间。接了多个账号时，在「空间账号与命令」的 selfId 中填写要使用的机器人 QQ 号。把自己的 QQ 号加入 allowUserIds，就能使用空间命令。
 guide.diary: 写下第一篇日记
-guide.configureDiary: 启用 LivingMemory，并在「空间人设与模型」中选择空间预设和写日记的主模型。机器人会以这个预设的口吻，从该预设当天新建且仍活跃的记忆中取材。
+guide.configureDiary: 启用 LivingMemory，并在「空间人设与模型」中选择空间预设和写日记的主模型。写作使用该预设在 LivingMemory 中的人设卡片，从当天新建且仍活跃的记忆中取材。没有卡片时使用预设的系统段原文。
 guide.schedule: 定时写作默认开启，每天按服务器本地时间 23:50 开始，最多取最近 100 条记忆。关闭定时后仍可发送 qzone.digest 手动写作。如果没有当日素材，或模型决定跳过，就不会产生新日记。
 guide.read: 每篇日记都保存在「日记」。默认也会发到 QQ 空间；只想记在日记册里，就在「每日日记」中关闭 publishDiaryToQzone。按预设和日期翻阅，左页是正文，右页是写作时的全部参考记忆。
 guide.commands: 空间命令与对话发布

@@ -3,7 +3,6 @@ import type { QzoneManager } from '../qzone/manager.js'
 import type { DiaryJournal } from '../journal/repository.js'
 import { readableError } from '../publishing/publish.js'
 import { decideDigest } from './model.js'
-import { renderPersona } from '../persona.js'
 import { buildDigestPrompts, formatMemoryLines, type DigestMemoryEntry } from './prompt.js'
 import { dailyDigestResultLabels, type DailyDigestReport, type DailyDigestResult, type DailyDigestTrigger } from './report.js'
 
@@ -17,6 +16,7 @@ export interface DigestSettings {
 
 /** LivingMemory 的插件根入口未导出服务类型；只描述本插件使用的公共读方法。 */
 interface MemoryReader {
+    presetPersona: { readCard(presetId: string): Promise<string> }
     repository: {
         listEntriesByPreset(presetId: string): Promise<readonly (DigestMemoryEntry & { status: 'active' | 'archived' })[]>
     }
@@ -38,9 +38,9 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
 
     const midnight = new Date(startedAt)
     midnight.setHours(0, 0, 0, 0)
+    const memory: MemoryReader = ctx.get('livingmemory')
     let memories: DigestMemoryEntry[]
     try {
-        const memory: MemoryReader = ctx.get('livingmemory')
         const rows = await memory.repository.listEntriesByPreset(preset.id)
         signal.throwIfAborted()
         memories = rows.filter(row => row.status === 'active' && row.createdAt >= midnight && row.createdAt <= startedAt)
@@ -52,10 +52,10 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
     if (!memories.length) return report('skipped-empty', '当日无记忆。')
 
     let persona: string
-    try { persona = await renderPersona(ctx, preset, startedAt) }
+    try { persona = await memory.presetPersona.readCard(preset.id) }
     catch {
         signal.throwIfAborted()
-        return report('preset-missing', '无法渲染空间预设的人设。')
+        return report('failed', '读取预设人设卡片失败。')
     }
     signal.throwIfAborted()
     if (!persona) return report('preset-missing', '空间预设的人设为空。')

@@ -31,7 +31,7 @@ export function apply(ctx: Context, config: Config) {
         const journal = createDiaryJournal(scope)
         scope.plugin({
             name: 'livingdiary-daily-digest',
-            inject: ['livingmemory', 'presets', 'prompt', 'chatluna', 'ai'],
+            inject: ['livingmemory', 'presets', 'chatluna', 'ai'],
             apply: ctx => registerDailyDigest(ctx, config, qzone, reports, journal)
         })
         scope.inject(['chatluna_webui', 'presets'], ui => registerWebUI(ui, ctx, journal, config.personaPresetId.trim()))
