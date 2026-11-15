@@ -1,14 +1,23 @@
 import * as React from 'react'
 import { Alert, Badge, EmptyState, Skeleton } from '@chatluna/ui-kit'
 import { useLive, useLocale, useTranslate } from '@chatluna/ui-client/client'
+import { useStored } from '@chatluna/ui-storage'
 import { useDiaryTimeline } from './diary-timeline.ts'
 import { DIARY_PAGE_SIZE } from '../src/journal/webui.ts'
 import './journal.css'
 
 type Preset = { id: string; name: string }
 
+const bookThemes = ['auto', 'light', 'dark'] as const
+type BookTheme = typeof bookThemes[number]
+
+function parseBookTheme(value: unknown): BookTheme {
+    return value === 'light' || value === 'dark' ? value : 'auto'
+}
+
 export function Journal({ preset, presets, onSelect }: { preset: Preset; presets: Preset[]; onSelect(id: string): void }) {
     const t = useTranslate('livingdiary')
+    const [theme, setTheme] = useStored('livingdiary.bookTheme', parseBookTheme)
     const dates = useLive('livingdiary.dates', { presetId: preset.id })
     const { active } = useLocale()
     const pages = React.useMemo(() => ['presets', ...(dates.data?.length ? dates.data : ['empty'])], [dates.data])
@@ -17,10 +26,11 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
     const first = Math.max(0, position.current - 1)
     const touch = React.useRef<{ x: number; y: number; offset: number; dragging: boolean } | null>(null)
     return (
-        <div className="ld-book-layout" ref={book} tabIndex={0} aria-label={t('tab.journal')}
+        <div className="ld-book-layout" data-theme={theme} ref={book} tabIndex={0} aria-label={t('tab.journal')}
             onKeyDown={event => {
                 if (event.altKey || event.ctrlKey || event.metaKey) return
                 if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                if (event.target instanceof HTMLInputElement) return
                 event.preventDefault()
                 const index = position.current + (event.key === 'ArrowLeft' ? -1 : 1)
                 const day = pages[index]
@@ -57,7 +67,7 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
                     return <div key={day} className="ld-layer" data-side={side} data-current={index === position.current}
                         hidden={index < position.left || index > position.right}
                         inert={index !== position.current}>
-                        {day === 'presets' && <PresetIndex presets={presets} current={preset} dates={dates.data} onPick={id => {
+                        {day === 'presets' && <PresetIndex presets={presets} current={preset} dates={dates.data} theme={theme} onThemeChange={setTheme} onPick={id => {
                             if (id === preset.id) goTo(1)
                             else onSelect(id)
                         }} />}
@@ -92,9 +102,17 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
     )
 }
 
-function PresetIndex({ presets, current, dates, onPick }: { presets: Preset[]; current: Preset; dates: string[] | undefined; onPick(id: string): void }) {
+function PresetIndex({ presets, current, dates, theme, onThemeChange, onPick }: {
+    presets: Preset[]
+    current: Preset
+    dates: string[] | undefined
+    theme: BookTheme
+    onThemeChange(theme: BookTheme): void
+    onPick(id: string): void
+}) {
     const t = useTranslate('livingdiary')
     const { active } = useLocale()
+    const themeGroup = React.useId()
     let inscription: string | undefined
     if (dates?.length) {
         const start = new Date(dates[dates.length - 1]!).toLocaleDateString(active, {
@@ -113,6 +131,16 @@ function PresetIndex({ presets, current, dates, onPick }: { presets: Preset[]; c
                     <span className="ld-flower-stamp" aria-hidden="true"><Flower /></span>
                 </div>
                 {inscription && <p className="ld-inscription">{inscription}</p>}
+            </div>
+            <div className="ld-theme-picker" role="radiogroup" aria-labelledby={themeGroup}>
+                <span id={themeGroup}>{t('journal.theme')}</span>
+                <div className="ld-paper-samples">
+                    {bookThemes.map(mode => (
+                        <input key={mode} type="radio" name={themeGroup} value={mode} checked={theme === mode}
+                            title={t(`journal.theme.${mode}`)} aria-label={t(`journal.theme.${mode}`)}
+                            onChange={() => onThemeChange(mode)} />
+                    ))}
+                </div>
             </div>
         </section>
         <section className="ld-leaf ld-scraps">

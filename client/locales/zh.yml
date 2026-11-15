@@ -4,6 +4,10 @@ tab.guide: 插件使用指南
 offline: 与实例的连接已中断，重新连接后会自动更新。
 
 journal.presetsTab: 预设
+journal.theme: 纸色
+journal.theme.auto: 跟随全局
+journal.theme.light: 浅色
+journal.theme.dark: 深色
 journal.belongsTo: 此册属于
 journal.bookHistory: 从 {date} 写起，已有 {count} 天留下了日记。
 journal.firstPage: 第一页，等你落笔。
