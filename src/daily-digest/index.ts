@@ -16,6 +16,7 @@ export function registerDailyDigest(ctx: Context, config: Config, qzone: Pick<Qz
         presetId: config.personaPresetId.trim(),
         model: config.mainModel.trim(),
         memoryLimit: config.digestMemoryLimit,
+        publishDiaryToQzone: config.publishDiaryToQzone,
         debug: config.debug
     }
     const missing: string[] = []

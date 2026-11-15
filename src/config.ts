@@ -17,6 +17,7 @@ export interface Config {
     mainModel: string
     subModel: string
     enableDailyDigest: boolean
+    publishDiaryToQzone: boolean
     digestTime: string
     digestMemoryLimit: number
     debug: boolean
@@ -61,7 +62,8 @@ const models = Schema.object({
 }).description('空间人设与模型')
 
 const digest = Schema.object({
-    enableDailyDigest: Schema.boolean().default(false).description('每天定时撰写空间日记。'),
+    enableDailyDigest: Schema.boolean().default(true).description('每天定时撰写日记。'),
+    publishDiaryToQzone: Schema.boolean().default(true).description('撰写日记后发布到 QQ 空间。'),
     digestTime: Schema.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/).default('23:50')
         .description('每天开始写日记的时间，按服务器本地时间填写（HH:mm）。'),
     digestMemoryLimit: Schema.number().min(10).max(200).step(1).default(100)

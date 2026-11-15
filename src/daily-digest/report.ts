@@ -1,6 +1,7 @@
 export type DailyDigestTrigger = 'scheduled' | 'manual'
 
 export type DailyDigestResult =
+    | 'saved'
     | 'published'
     | 'skipped-empty'
     | 'skipped-by-model'
@@ -17,6 +18,7 @@ export interface DailyDigestReport {
 }
 
 export const dailyDigestResultLabels: Record<DailyDigestResult, string> = {
+    saved: '已保存到日记册',
     published: '已发布',
     'skipped-empty': '跳过（当日无记忆）',
     'skipped-by-model': '模型判定跳过',

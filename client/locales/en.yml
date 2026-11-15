@@ -47,8 +47,8 @@ guide.comments.title: Set up comments and replies
 guide.account: Keep a OneBot or Milky bot online to use its Qzone. If multiple accounts are connected, enter the bot’s QQ number in selfId. Add your own QQ number to allowUserIds to use Qzone commands.
 guide.diary: Write your first diary entry
 guide.configureDiary: Enable LivingMemory, then choose a Qzone preset and a diary model (mainModel). The bot writes in that preset’s voice, using its active memories created today.
-guide.schedule: Send qzone.digest to write now, or enable the daily schedule. By default it starts at 23:50 in the server’s local time and uses up to 100 recent memories. No entry is written if there is no material or if the model decides to skip.
-guide.read: The diary saves the text before posting to Qzone. Browse by preset and date. Read the diary on the left and the memories used to write it on the right. A date can have several entries.
+guide.schedule: Scheduled writing is on by default. It starts at 23:50 server time and uses up to 100 recent memories. You can run qzone.digest even with the schedule off. No entry is written if there is no material or if the model decides to skip.
+guide.read: Every entry is saved in the journal. Entries are also posted to Qzone by default. Turn off publishDiaryToQzone to keep them in the journal only. Browse by preset and date to see the text on the left and its reference memories on the right.
 guide.commands: Commands and posting from chat
 guide.cmd.status: qzone.status
 guide.use.status: Check the login state, latest diary result and interaction status.
@@ -57,9 +57,9 @@ guide.use.feeds: Read the bot’s three latest posts.
 guide.cmd.publish: qzone.publish It rained today
 guide.use.publish: Post your own text or images. Attach up to nine images per message.
 guide.cmd.digest: qzone.digest
-guide.use.digest: Write a diary entry now. A completed entry is submitted to Qzone.
+guide.use.digest: Write an entry now using the current diary publishing setting.
 guide.tool: Turn on the publishing tool (enablePublishTool) to let users in the command allowlist ask the bot to post from chat.
 guide.interactions: Automatic comments and replies
 guide.interactionConfig: Choose a Qzone preset and an interaction model (subModel), then add QQ numbers to interactionAllowUserIds. This list is independent of the command allowlist. By default the bot only interacts with people on this list, so leaving it empty prevents automatic interactions.
 guide.comments: Turn on friend comments (enableFriendPostComment) to let the bot consider commenting on new posts from friends. Set interactionMonitorPostLimit to the number of posts whose comments you want to follow, or zero to turn off replies. On startup the bot records existing activity and begins handling new posts and comments at the next check.
-guide.receipt: Unpublished means the diary was saved and no publication was attempted. Each diary is sent once. If QQ returns a post ID, LivingDiary immediately reads that post. Only a successful read counts as published. All other attempts are marked as failed. The diary and its reference memories are kept.
+guide.receipt: Unpublished means the diary was saved and no publication was attempted. When publishing is on, each entry is sent once. If QQ returns a post ID, LivingDiary immediately reads that post. Only a successful read counts as published. All other attempts are marked as failed.

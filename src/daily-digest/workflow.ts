@@ -5,12 +5,13 @@ import { readableError } from '../publishing/publish.js'
 import { decideDigest } from './model.js'
 import { renderPersona } from '../persona.js'
 import { buildDigestPrompts, formatMemoryLines, type DigestMemoryEntry } from './prompt.js'
-import type { DailyDigestReport, DailyDigestResult, DailyDigestTrigger } from './report.js'
+import { dailyDigestResultLabels, type DailyDigestReport, type DailyDigestResult, type DailyDigestTrigger } from './report.js'
 
 export interface DigestSettings {
     presetId: string
     model: string
     memoryLimit: number
+    publishDiaryToQzone: boolean
     debug?: boolean
 }
 
@@ -25,11 +26,11 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
     journal: Pick<DiaryJournal, 'save' | 'beginPublication' | 'finishPublication'>, settings: DigestSettings,
     trigger: DailyDigestTrigger, signal: AbortSignal, startedAt = new Date()): Promise<DailyDigestReport> {
     signal.throwIfAborted()
-    const report = (result: DailyDigestResult, detail: string): DailyDigestReport => {
+    const report = (result: DailyDigestResult, detail = ''): DailyDigestReport => {
         let level: 'info' | 'warn' | 'error' = 'info'
         if (result === 'failed' || result === 'model-failed' || result === 'publish-failed') level = 'error'
         else if (result === 'preset-missing') level = 'warn'
-        ctx.logger[level]('每日日记：%s（%s）：%s', settings.presetId, trigger === 'scheduled' ? '定时' : '手动', detail)
+        ctx.logger[level]('每日日记：%s（%s）：%s', settings.presetId, trigger === 'scheduled' ? '定时' : '手动', detail || dailyDigestResultLabels[result])
         return { triggeredAt: startedAt.toISOString(), trigger, result, detail }
     }
     const preset = ctx.presets.get(settings.presetId)
@@ -67,7 +68,7 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
     try {
         const decision = await decideDigest(ctx, settings.model, prompts, signal, settings.debug ?? false)
         signal.throwIfAborted()
-        if (decision.action === 'skip') return report('skipped-by-model', '模型决定跳过本次发布。')
+        if (decision.action === 'skip') return report('skipped-by-model', '模型决定跳过本次写作。')
         content = decision.content
     } catch (error) {
         signal.throwIfAborted()
@@ -80,6 +81,7 @@ export async function runDailyDigest(ctx: Context, qzone: Pick<QzoneManager, 'pu
         ctx.logger.error('保存日记失败：%s', error)
         return report('failed', '保存日记失败。')
     }
+    if (!settings.publishDiaryToQzone) return report('saved')
     signal.throwIfAborted()
     try {
         await journal.beginPublication(id)

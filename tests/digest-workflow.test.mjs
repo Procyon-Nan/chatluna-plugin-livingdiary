@@ -9,7 +9,7 @@ import { decideDigest } from '../lib/daily-digest/model.js'
 
 const start = new Date(2026, 10, 11, 12)
 const midnight = new Date(2026, 10, 11)
-const settings = { presetId: 'p', model: '@large', memoryLimit: 100 }
+const settings = { presetId: 'p', model: '@large', memoryLimit: 100, publishDiaryToQzone: true }
 const text = '第一段。\n\n' + '写得长一点。'.repeat(30)
 const call = input => ({ type: 'tool-call', toolCallId: 'result', toolName: 'publish_daily_digest', input })
 const result = input => ({ finish: { kind: 'tool-calls' }, toolCalls: [call(input)], content: [call(input)] })
@@ -110,6 +110,18 @@ test('当天仅整理或编辑了旧记忆时，日记跳过，不调用模型�
     assert.equal((await api.run()).result, 'skipped-empty')
     assert.equal(api.calls.length, 0)
     assert.equal(api.writes.length, 0)
+})
+
+test('关闭空间发布时，写好的正文和参考记忆仍存入日记册', async t => {
+    const api = await fixture(t)
+    api.rows.splice(1)
+    api.journal.beginPublication = assert.fail
+    const { result } = await api.run({ publishDiaryToQzone: false })
+    assert.equal(result, 'saved')
+    const { id, content } = api.rows[0]
+    assert.deepEqual(api.saved, [{ at: start, entry: { presetId: 'p', presetName: '人设 A', content: text, memories: [{ id, content }] } }])
+    assert.deepEqual(api.writes, [])
+    assert.deepEqual(api.outcomes, [])
 })
 
 test('模型跳过则不存不发；未验证和空间写入异常都记为发布失败，不重发', async t => {
