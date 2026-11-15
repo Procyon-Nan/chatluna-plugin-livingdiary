@@ -27,7 +27,7 @@ export function LivingDiaryPage() {
     }, [tab])
 
     return (
-        <div className="flex h-full min-w-0 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
+        <div className="ld-page flex h-full min-w-0 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
             <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
                 <nav aria-label="LivingDiary" className="flex min-w-0 items-center gap-1 overflow-x-auto">
                     {tabs.map(key => (

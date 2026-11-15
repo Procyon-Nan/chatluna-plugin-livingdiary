@@ -35,6 +35,7 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
                 </button>
             </div>
             <div className="ld-stage" ref={stage}
+                style={{ '--left-page': position.left } as React.CSSProperties}
                 onTouchStart={event => {
                     touchStart()
                     const finger = event.touches[0]
@@ -54,7 +55,7 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
                     const index = first + i
                     const side = index === position.left ? 'front' : 'back'
                     return <div key={day} className="ld-layer" data-side={side} data-current={index === position.current}
-                        hidden={index < position.left || index > position.left + 1}
+                        hidden={index < position.left || index > position.right}
                         inert={index !== position.current}>
                         {day === 'presets' && <PresetIndex presets={presets} current={preset} dates={dates.data} onPick={id => {
                             if (id === preset.id) goTo(1)

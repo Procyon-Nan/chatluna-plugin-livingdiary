@@ -2,12 +2,12 @@ import * as React from 'react'
 
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** 时间轴是唯一的播放进度：原生横滑、翻页手势和滚轮都只移动它。 */
+/** 自动翻页和时间轴共用连续进度；手动拖动时由滚动位置驱动书页。 */
 export function useDiaryTimeline(pages: string[], initial: number) {
     const book = React.useRef<HTMLDivElement>(null)
     const rail = React.useRef<HTMLElement>(null)
     const stage = React.useRef<HTMLDivElement>(null)
-    const [position, setPosition] = React.useState({ left: initial, current: initial })
+    const [position, setPosition] = React.useState({ left: initial, right: initial, current: initial })
     const selectedPage = React.useRef(pages[initial])
     const frame = React.useRef(0)
     const target = React.useRef(0)
@@ -23,10 +23,16 @@ export function useDiaryTimeline(pages: string[], initial: number) {
     function glide(to: number) {
         const node = rail.current!
         target.current = Math.max(0, Math.min(to, node.scrollWidth - node.clientWidth))
-        if (reduceMotion()) { node.scrollLeft = target.current; return }
+        if (reduceMotion()) {
+            stop()
+            node.scrollLeft = target.current
+            showPageAt(node.scrollLeft / step())
+            return
+        }
         if (frame.current || node.scrollLeft === target.current) return
 
         // 临界阻尼：起页时逐渐加速，落页时减速；继续滚动只移动目标，不从头播放。
+        const pageWidth = step()
         let offset = node.scrollLeft, velocity = 0, last = performance.now()
         function tick(now: number) {
             const dt = Math.min(48, now - last) / 1000
@@ -37,13 +43,11 @@ export function useDiaryTimeline(pages: string[], initial: number) {
             const decay = Math.exp(-rate * dt)
             offset = target.current + (gap + carry * dt) * decay
             velocity = (velocity - rate * carry * dt) * decay
-            if (Math.abs(offset - target.current) < .5 && Math.abs(velocity) < 4) {
-                node.scrollLeft = target.current
-                frame.current = 0
-                return
-            }
+            const settled = Math.abs(offset - target.current) < .02 && Math.abs(velocity) < 4
+            if (settled) offset = target.current
             node.scrollLeft = offset
-            frame.current = requestAnimationFrame(tick)
+            showPageAt(offset / pageWidth)
+            frame.current = settled ? 0 : requestAnimationFrame(tick)
         }
         frame.current = requestAnimationFrame(tick)
     }
@@ -52,31 +56,32 @@ export function useDiaryTimeline(pages: string[], initial: number) {
         if (touching.current) return
         timer.current = setTimeout(() => {
             const offset = frame.current ? target.current : rail.current!.scrollLeft
-            glide(Math.round(offset / step()) * step())
+            const pageWidth = step()
+            glide(Math.round(offset / pageWidth) * pageWidth)
         }, 110)
     }
     function goTo(index: number) {
         clearTimeout(timer.current)
         glide(index * step())
     }
-    function sync() {
-        const value = Math.max(0, Math.min(pages.length - 1, rail.current!.scrollLeft / step()))
-        const left = Math.floor(value), current = Math.round(value), fraction = value - left
-        stage.current!.toggleAttribute('data-turning', fraction > 0)
-        const style = stage.current!.style
-        style.setProperty('--turn', `${-180 * fraction}deg`)
-        const lift = Math.sin(Math.PI * fraction)
-        style.setProperty('--lift', String(lift))
-        style.setProperty('--glint', `${18 + 64 * fraction}%`)
+    function showPageAt(page: number) {
+        const value = Math.max(0, Math.min(pages.length - 1, page))
+        const left = Math.floor(value), right = Math.ceil(value), current = Math.round(value)
+        stage.current!.style.setProperty('--page-position', String(value))
         selectedPage.current = pages[current]
-        setPosition(prev => prev.left === left && prev.current === current ? prev : { left, current })
-        if (!frame.current) snapSoon()
+        setPosition(prev => prev.left === left && prev.right === right && prev.current === current ? prev : { left, right, current })
+    }
+    function sync() {
+        if (frame.current) return
+        showPageAt(rail.current!.scrollLeft / step())
+        snapSoon()
     }
     React.useLayoutEffect(() => {
         stop()
         const selected = pages.indexOf(selectedPage.current!)
-        rail.current!.scrollLeft = (selected < 0 ? initial : selected) * step()
-        sync()
+        const index = selected < 0 ? initial : selected
+        rail.current!.scrollLeft = index * step()
+        showPageAt(index)
         return stop
     }, [pages, initial])
 
@@ -100,7 +105,11 @@ export function useDiaryTimeline(pages: string[], initial: number) {
         return () => node.removeEventListener('wheel', onWheel)
     }, [])
 
-    function touchStart() { stop(); touching.current = true }
+    function touchStart() {
+        stop()
+        touching.current = true
+        sync()
+    }
     function touchEnd() { touching.current = false; snapSoon() }
     return { book, rail, stage, position, goTo, sync, touchStart, touchEnd }
 }
