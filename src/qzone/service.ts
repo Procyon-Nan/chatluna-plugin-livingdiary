@@ -1,10 +1,32 @@
 import type { Context } from 'cordis'
-import { QzoneClient } from 'qzone-sdk'
+import { QzoneClient, type QzoneLogEvent } from 'qzone-sdk'
 import type { Config } from '../config.js'
 import { acquireQzoneCookies, canonicalQQ, NoBotAvailableError, selectCookieBot } from './cookie-source.js'
 import { QzoneManager } from './manager.js'
 
 type QzoneConfig = Pick<Config, 'platform' | 'selfId' | 'debug' | 'rebindMinIntervalSeconds' | 'rebindBackoffSeconds' | 'rebindMaxConsecutiveFailures'>
+
+const readTargets: Record<string, string> = {
+    'feed.profile': '个人主页动态',
+    'feed.index': '好友动态',
+    'post.detail.legacy': '动态详情'
+}
+
+const readErrors: Record<string, string> = {
+    QZONE_PARSE: '无法解析接口响应',
+    QZONE_PERMISSION: '访问权限不足',
+    QZONE_RATE_LIMIT: '请求频率受限',
+    QZONE_REQUEST: '接口请求失败'
+}
+
+function fallbackMessage({ endpoint = '', errorCode = '接口异常', statusCode = 0 }: QzoneLogEvent): string {
+    const target = readTargets[endpoint] ?? '空间动态'
+    const reason = statusCode >= 300 && statusCode < 400
+        ? '接口返回重定向'
+        : readErrors[errorCode] ?? errorCode
+    const status = statusCode ? `（HTTP ${statusCode}）` : ''
+    return `事件：读取${target}时${reason}${status}，改用备用接口`
+}
 
 export function createQzoneService(ctx: Context, config: QzoneConfig) {
     let boundSelfId = config.selfId
@@ -22,8 +44,7 @@ export function createQzoneService(ctx: Context, config: QzoneConfig) {
                 logger(event) {
                     observe?.(event)
                     if (config.debug && event.phase === 'read.fallback') {
-                        const what = event.endpoint?.startsWith('post.detail') ? '动态详情' : '动态列表'
-                        ctx.logger.info(`事件：读取${what}失败，切换接口继续读取`)
+                        ctx.logger.info(fallbackMessage(event))
                     }
                 }
             })

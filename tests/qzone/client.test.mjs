@@ -12,11 +12,13 @@ const rebind = { minIntervalSeconds: 0, backoffSeconds: 2, maxBackoffSeconds: 3,
 const logger = { info() {}, error() {}, warn() {} }
 const auth = () => { throw new QzoneAuthError('expired') }
 
-test('空间请求不逐条打印，调试时仅提示换入口，最终失败交给调用方', async t => {
+test('调试日志区分个人主页和好友动态的接口切换，并说明原因；最终失败交给调用方', async t => {
     let denied = false
     t.mock.method(globalThis, 'fetch', async url => {
         const path = new URL(url).pathname
         if (path === '/mqzone/profile') return new Response('invalid profile')
+        if (path === '/mqzone/index') return Response.redirect('https://example.org/', 302)
+        if (path.endsWith('/feeds3_html_more')) return Response.json({ code: 0, msglist: [] })
         assert.ok(path.endsWith('emotion_cgi_msglist_v6'))
         return denied ? new Response(null, { status: 403 }) : Response.json({ code: 0, msglist: [] })
     })
@@ -28,11 +30,14 @@ test('空间请求不逐条打印，调试时仅提示换入口，最终失败�
             logger: { info: line => info.push(line), warn: assert.fail, error: line => errors.push(line) }
         }, { platform: 'auto', debug })
         try {
-            await service.listFeedPage({ scope: 'profile', userId: '2345' })
-            assert.deepEqual(info, debug ? ['事件：读取动态列表失败，切换接口继续读取'] : [])
-            assert.deepEqual(errors, [])
+            await service.listFeedPage({ scope: 'self' })
+            await service.listFeedPage({ scope: 'friends' })
+            assert.deepEqual(info, debug ? [
+                '事件：读取个人主页动态时无法解析接口响应，改用备用接口',
+                '事件：读取好友动态时接口返回重定向（HTTP 302），改用备用接口'
+            ] : [])
             denied = true
-            await assert.rejects(service.listFeedPage({ scope: 'profile', userId: '3456' }))
+            await assert.rejects(service.listFeedPage({ scope: 'profile', userId: '3456' }), { code: 'QZONE_PERMISSION' })
             assert.deepEqual(errors, [])
         } finally { await service.close() }
     }
