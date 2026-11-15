@@ -11,7 +11,7 @@ LivingDiary 是 ChatLuna v2 的 QQ 空间插件，npm 包名为 `chatluna-plugin
 
 ## 参考项目
 
-- [LivingDiary v1](https://github.com/Procyon-Nan/chatluna-livingdiary)：核对原插件的行为和测试。
+- [LivingDiary v1](https://github.com/Procyon-Nan/koishi-plugin-chatluna-livingdiary)：核对原插件的行为和测试。
 - [ChatLuna v2 开发文档](https://github.com/ChatLunaLab/doc)、[框架源码](https://github.com/ChatLunaLab/v2-mirror) 与 [插件开发模板](https://github.com/ChatLunaLab/boilerplate)：核对 v2 插件接口和开发环境。
 - [qzone-sdk](https://github.com/Procyon-Nan/qzone-sdk)：核对 QQ 空间读写接口及写入结果的含义。
 - [OneBot 适配器](https://github.com/koishijs/koishi-plugin-adapter-onebot) 与 [Milky 适配器](https://github.com/idranme/koishi-plugin-adapter-milky)：核对已登录机器人的 Cookie 获取接口。
