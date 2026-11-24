@@ -1,4 +1,5 @@
 import type { Context } from 'cordis'
+import type { FileRefTable } from '@chatluna/transform'
 import {
     QzoneAuthError, QzoneCancelledError, QzoneError, QzoneValidationError,
     type MutationOutcome, type PublishImageInput
@@ -42,17 +43,16 @@ export const publishOutcomeMessages: Record<MutationOutcome, string> = {
 }
 
 /** 命令与工具在所有配图就绪后只提交一次。 */
-export async function publishPost(ctx: Context, qzone: Pick<QzoneManager, 'publish'>, input: PublishInput, signal?: AbortSignal):
+export async function publishPost(ctx: Context, qzone: Pick<QzoneManager, 'publish'>, input: PublishInput, signal?: AbortSignal, files?: FileRefTable):
     Promise<{ outcome: MutationOutcome | 'failed'; message: string }> {
     const content = input.content
-    const urls = input.images ?? []
-    if (!content.trim() && !urls.length) return { outcome: 'failed', message: '请提供要发布的动态内容或图片。' }
-    if (urls.length > 9) return { outcome: 'failed', message: '一次最多只能发布 9 张图片。' }
+    const references = input.images ?? []
+    if (!content.trim() && !references.length) return { outcome: 'failed', message: '请提供要发布的动态内容或图片。' }
+    if (references.length > 9) return { outcome: 'failed', message: '一次最多只能发布 9 张图片。' }
     const images: PublishImageInput[] = []
     try {
-        for (const url of urls) {
-            signal?.throwIfAborted()
-            images.push(await readPublishImage(ctx, url, signal))
+        for (const reference of references) {
+            images.push(await readPublishImage(ctx, reference, signal, files))
         }
         signal?.throwIfAborted()
         const result = await qzone.publish({

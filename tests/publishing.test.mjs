@@ -6,8 +6,103 @@ import * as diary from '../lib/index.js'
 import Tools from '@chatluna/tool'
 import Permissions from '@chatluna/permission'
 import { QzoneClient } from 'qzone-sdk'
+import { fileRefTableOf } from '@chatluna/transform'
 import { registerPublishTool } from '../lib/publishing/tool.js'
 import { publishPost } from '../lib/publishing/publish.js'
+
+test('工具按当前会话 ref 读取原图，引用、多种数据形式和直接地址保持顺序', async t => {
+    let downloads = 0, scans = 0
+    const server = createServer((_request, response) => { downloads++; response.end('remote') })
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    t.after(() => new Promise(resolve => server.close(resolve)))
+    const url = `http://127.0.0.1:${server.address().port}/photo.png`
+    const stored = { type: 'file', mediaType: 'image/png', filename: 'original.png',
+        data: { type: 'reference', reference: 'storage://original' },
+        preview: { type: 'reference', reference: 'storage://preview' } }
+    const inline = { type: 'file', mediaType: 'image/png', filename: 'inline.png',
+        data: { type: 'data', data: Buffer.from('inline').toString('base64') } }
+    const uri = { type: 'file', mediaType: 'image/png', filename: 'uri.png',
+        data: { type: 'data', data: 'data:image/png;base64,' + Buffer.from('uri').toString('base64') } }
+    const remote = { type: 'file', mediaType: 'image/png', filename: 'remote.png', data: { type: 'url', url } }
+    const messages = [{ role: 'user', meta: { quote: { content: [inline] } }, content: [
+        { type: 'envelope', content: [stored, uri], quoted: { content: [remote] } }
+    ] }]
+    const table = fileRefTableOf(messages)
+    let tool
+    const reads = [], writes = []
+    const ctx = { tools: { define(value) { tool = value } }, logger: { warn() {} }, get() {
+        return { async getTempFile(id) {
+            reads.push(id)
+            assert.equal(id, 'original')
+            return { name: 'stored.png', data: Buffer.from('original') }
+        } }
+    } }
+    registerPublishTool(ctx, { allowUserIds: ['23'] }, { async publish(request) { writes.push(request); return { outcome: 'verified' } } })
+    const subject = { source: 'chat', platform: 'onebot', user: '23' }
+    const call = { principal: { source: 'chat', subject, wakingPrincipals: [subject] },
+        agent: { options: { conversationKey: 'current' }, session: { messages() { scans++; return messages } } },
+        signal: new AbortController().signal }
+    const images = [stored, inline, uri, remote].map(block => table.refOf(block))
+    const result = await tool.run({ content: '配文', images: [...images, 'storage://original'] }, call)
+    assert.equal(result.outcome, 'verified')
+    assert.equal(scans, 1)
+    assert.equal(writes.length, 1)
+    assert.deepEqual(writes[0].images.map(image => [image.name, Buffer.from(image.data).toString()]), [
+        ['original.png', 'original'], ['inline.png', 'inline'], ['uri.png', 'uri'], ['remote.png', 'remote'], ['stored.png', 'original']
+    ])
+    assert.deepEqual(reads, ['original', 'original'])
+    assert.equal(downloads, 1)
+    const other = { ...subject, user: '24' }
+    await assert.rejects(tool.run({ content: '', images }, {
+        ...call, principal: { source: 'chat', subject: other, wakingPrincipals: [other] }
+    }), /白名单/)
+    assert.equal(scans, 1)
+    assert.equal(reads.length, 2)
+    assert.equal(downloads, 1)
+    assert.equal(writes.length, 1)
+    const withoutAgent = { ...call, agent: undefined }
+    assert.equal((await tool.run({ content: '', images: [url] }, withoutAgent)).outcome, 'verified')
+    assert.equal((await tool.run({ content: '', images: [images[0]] }, withoutAgent)).outcome, 'failed')
+    assert.equal(downloads, 2)
+    assert.equal(writes.length, 2)
+    const noHistory = { ...call, agent: { options: call.agent.options, session: { messages: assert.fail } } }
+    assert.equal((await tool.run({ content: '', images: ['storage://original'] }, noHistory)).outcome, 'verified')
+    assert.equal((await tool.run({ content: '纯文字' }, noHistory)).outcome, 'verified')
+    assert.equal(writes.length, 4)
+})
+
+test('无效或不可读取的图片编号终止整批发布，读取取消向上传递', async () => {
+    const stored = id => ({ type: 'file', mediaType: 'image/png', data: { type: 'reference', reference: `storage://${id}` } })
+    const good = stored('good'), missing = stored('missing'), large = stored('large'), cancelled = stored('cancelled')
+    const video = { type: 'file', mediaType: 'video/mp4', data: { type: 'url', url: 'https://example.invalid/video.mp4' } }
+    const document = { type: 'file', mediaType: 'application/pdf', data: { type: 'data', data: 'ZmlsZQ==' } }
+    const text = { type: 'file', mediaType: 'image/png', data: { type: 'text', text: '原图不可用' } }
+    const table = fileRefTableOf([{ role: 'user', content: [good, missing, large, cancelled, video, document, text] }])
+    const controller = new AbortController()
+    const reads = []
+    const ctx = { logger: { warn() {} }, get() { return { async getTempFile(id) {
+        reads.push(id)
+        if (id === 'missing') return null
+        if (id === 'cancelled') controller.abort()
+        return { name: 'image.png', data: Buffer.alloc(id === 'large' ? 32 * 1024 * 1024 + 1 : 1) }
+    } } } }
+    const qzone = { publish: assert.fail }
+    const post = images => publishPost(ctx, qzone, { content: '', images }, controller.signal, table)
+    for (const [ref, error] of [
+        ['i' + '0'.repeat(64), /未找到/], ['', /完整的图片 ref/], ['i', /完整的图片 ref/],
+        [table.refOf(video), /不是图片/], [table.refOf(document), /不是图片/],
+        [table.refOf(text), /原文件不可读取/], [table.refOf(missing), /临时图片不可用/],
+        [table.refOf(large), /大小超过/]
+    ]) {
+        const result = await post([table.refOf(good), ref])
+        assert.equal(result.outcome, 'failed')
+        assert.match(result.message, error)
+    }
+    await assert.rejects(post([table.refOf(cancelled)]), { name: 'AbortError' })
+    const count = reads.length
+    await assert.rejects(post([table.refOf(good)]), { name: 'AbortError' })
+    assert.equal(reads.length, count)
+})
 
 test('长正文原样进入 SDK 发布请求，接口拒绝时返回失败且只提交一次', async t => {
     const content = '  ' + '日记正文🌙'.repeat(40) + '\r\n\r\n  第二段  & + 正文\t\n '
