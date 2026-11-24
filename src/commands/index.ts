@@ -42,7 +42,7 @@ export function extractPublishParts(elements: readonly h[]): PublishParts {
             }
         }
     }
-    return { content: content.trim(), imageUrls }
+    return { content, imageUrls }
 }
 
 export function registerCommands(ctx: Context, config: Config, service: QzoneService, reports: RuntimeReports): void {

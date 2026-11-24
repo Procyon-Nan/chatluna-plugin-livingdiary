@@ -44,9 +44,9 @@ export const publishOutcomeMessages: Record<MutationOutcome, string> = {
 /** 命令与工具在所有配图就绪后只提交一次。 */
 export async function publishPost(ctx: Context, qzone: Pick<QzoneManager, 'publish'>, input: PublishInput, signal?: AbortSignal):
     Promise<{ outcome: MutationOutcome | 'failed'; message: string }> {
-    const content = input.content.replace(/\s+/g, ' ').trim()
+    const content = input.content
     const urls = input.images ?? []
-    if (!content && !urls.length) return { outcome: 'failed', message: '请提供要发布的动态内容或图片。' }
+    if (!content.trim() && !urls.length) return { outcome: 'failed', message: '请提供要发布的动态内容或图片。' }
     if (urls.length > 9) return { outcome: 'failed', message: '一次最多只能发布 9 张图片。' }
     const images: PublishImageInput[] = []
     try {
@@ -56,7 +56,7 @@ export async function publishPost(ctx: Context, qzone: Pick<QzoneManager, 'publi
         }
         signal?.throwIfAborted()
         const result = await qzone.publish({
-            content: content.length > 100 ? content.slice(0, 100) + '…' : content,
+            content,
             ...(signal ? { signal } : {}),
             ...(images.length ? { images } : {})
         })

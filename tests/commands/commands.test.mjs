@@ -68,6 +68,7 @@ test('状态展示最近一次日记的触发方式、时间和处理结果', as
 })
 
 test('手动发布仅读取顶层文本和配图，表情及引用中的配图不会发布', async () => {
+    const content = '  ' + '日记正文🌙'.repeat(30) + '\n\n  第二段  正文\t\n '
     const actions = new Map()
     const bodies = []
     const lookups = []
@@ -83,10 +84,10 @@ test('手动发布仅读取顶层文本和配图，表情及引用中的配图�
     }
     registerCommands(ctx, { allowUserIds: ['23'] }, { async publish(req) { bodies.push(req); return { outcome: 'verified' } } }, { digest: null })
     const response = await actions.get('qzone.publish')({ session }, [
-        h.text('测试内容'), h('face', {}, h.image('https://example.invalid/face.png')),
+        h.text(content.slice(0, 80)), h.text(content.slice(80)), h('face', {}, h.image('https://example.invalid/face.png')),
         h('quote', {}, h.text('引用正文'), h.image('https://example.invalid/quoted.png')), h.image('storage://a')
     ])
     assert.match(response, /发布成功/)
     assert.deepEqual(lookups, ['a'])
-    assert.deepEqual(bodies, [{ content: '测试内容', images: [{ name: 'a.png', data: Buffer.from([7]) }] }])
+    assert.deepEqual(bodies, [{ content, images: [{ name: 'a.png', data: Buffer.from([7]) }] }])
 })
