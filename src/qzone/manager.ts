@@ -32,7 +32,7 @@ export interface QzoneManagerStatus {
     readonly rebind: RebindStats
 }
 
-export type QzoneWriteOperation = 'publish' | 'comment' | 'reply'
+export type QzoneWriteOperation = 'comment' | 'reply'
 
 /** 写操作登录态失效：已按策略尝试续绑，但绝不自动重放。 */
 export class QzoneWriteAuthError extends Error {
@@ -41,7 +41,6 @@ export class QzoneWriteAuthError extends Error {
 
     constructor(operation: QzoneWriteOperation, rebound: boolean) {
         const labels: Record<QzoneWriteOperation, string> = {
-            publish: '发布动态',
             comment: '评论动态',
             reply: '回复评论'
         }
@@ -58,7 +57,7 @@ export class QzoneWriteAuthError extends Error {
 
 export interface QzoneManagerDeps {
     readonly currentBot: () => Pick<CookieBot, 'platform' | 'selfId'> | undefined
-    /** 获取一份通过验收的 Cookie；失败视为一次续绑失败。 */
+    /** 从绑定机器人获取当前 Cookie 及其所属账号。 */
     readonly acquire: () => Promise<QzoneCookieGrant>
     readonly createClient: (session: QzoneSessionInput & { accountId: string }, observe?: QzoneLogger) => QzoneClient
     readonly logger: Pick<Logger, 'info' | 'warn' | 'error'>
@@ -106,27 +105,29 @@ export class QzoneManager {
         )
     }
 
-    /** 发布图文动态；登录态失效时仅触发续绑，不自动重放。 */
+    /** 使用绑定机器人当前的 Cookie 发布动态。 */
     publish(request: PublishPostOptions): Promise<PostMutationResult> {
-        return this.#runWrite('publish', '发布动态', request.signal, (client) =>
-            client.publishPost(request)
-        )
+        return this.#publish(request)
     }
 
     /** SDK 也会用最近动态的相同正文确认发布；日记只接受按回执 ID 读取的详情。 */
     async publishDiary(request: Pick<PublishPostOptions, 'content' | 'signal'>): Promise<boolean> {
-        const { cookies, accountId } = await this.#acquire(request.signal)
-        this.#assertOpen(request.signal)
         let readById = false
-        const diary = this.#deps.createClient({ cookies, accountId }, event => {
+        const { outcome } = await this.#publish(request, event => {
             if (event.phase === 'request.start' &&
                 (event.endpoint === 'post.detail.legacy' || event.endpoint === 'post.detail.h5')) readById = true
         })
+        return readById && outcome === 'verified'
+    }
+
+    async #publish(request: PublishPostOptions, observe?: QzoneLogger): Promise<PostMutationResult> {
+        const { cookies, accountId } = await this.#acquire(request.signal)
+        this.#assertOpen(request.signal)
+        const client = this.#deps.createClient({ cookies, accountId }, observe)
         try {
-            const { outcome } = await diary.publishPost(request)
-            return readById && outcome === 'verified'
+            return await client.publishPost(request)
         } finally {
-            await diary.close()
+            await client.close()
         }
     }
 

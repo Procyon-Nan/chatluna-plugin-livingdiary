@@ -93,6 +93,103 @@ test('自动选在线 OneBot，其次 Milky；指定 selfId/协议后不借其�
     assert.equal(selectCookieBotView(bots, 'onebot', '1'), undefined)
 })
 
+test('普通发布使用本次取得的 Cookie，保留 SDK 结果和鉴权错误并关闭客户端', async t => {
+    for (const scenario of ['首次发布', '缓存过期', '连续发布', 'HTTP 401', '业务码 -3000', '旧票据', '已受理', '回执不明', '取票失败']) {
+        await t.test(scenario, async t => {
+            const posts = [], warnings = []
+            let ticket = 'cached', acquires = 0, creates = 0, closes = 0
+            const manager = new QzoneManager({ logger, rebind,
+                acquire: async () => {
+                    acquires++
+                    if (scenario === '取票失败') throw new CookieAcquireError('获取 Cookie 失败')
+                    return { ...grant, cookies: `uin=o${grant.accountId}; p_skey=${ticket}` }
+                },
+                createClient: (session, observe) => {
+                    creates++
+                    const client = new QzoneClient({ session, logger: observe, fetch: async (url, init) => {
+                        const { pathname } = new URL(url)
+                        if (pathname.endsWith('emotion_cgi_publish_v6')) {
+                            assert.equal(init.method, 'POST')
+                            posts.push(new Headers(init.headers).get('cookie'))
+                            if (scenario === 'HTTP 401') return new Response(null, { status: 401 })
+                            if (scenario === '业务码 -3000' || scenario === '旧票据') {
+                                return Response.json({ code: -3000, msg: 'p_skey=secret' })
+                            }
+                            if (scenario === '回执不明') return new Response('invalid', { status: 500 })
+                            return Response.json({ code: 0, tid: 'post-id' })
+                        }
+                        if (pathname.endsWith('emotion_cgi_msgdetail_v6')) {
+                            return Response.json(scenario === '已受理' ? { code: -100 } : {
+                                tid: 'post-id', uin: grant.accountId, content: 'hello'
+                            })
+                        }
+                        return Response.json({ code: 0, msglist: [] })
+                    } })
+                    const close = client.close.bind(client)
+                    t.mock.method(client, 'close', async () => { closes++; await close() })
+                    return client
+                }
+            })
+            try {
+                const cached = scenario === '缓存过期' || scenario === '旧票据'
+                if (cached) await manager.getPost({ post: { id: 'post-id', authorId: grant.accountId } })
+                if (scenario !== '旧票据') ticket = 'current'
+                const result = await publishPost({ logger: { warn: message => warnings.push(message) } }, manager, { content: 'hello' })
+                let expected = 'verified'
+                if (['HTTP 401', '业务码 -3000', '旧票据', '取票失败'].includes(scenario)) expected = 'failed'
+                if (scenario === '已受理') expected = 'accepted'
+                if (scenario === '回执不明') expected = 'unknown'
+                assert.equal(result.outcome, expected)
+                if (scenario === 'HTTP 401') assert.match(result.message, /HTTP 401/)
+                if (scenario === '业务码 -3000' || scenario === '旧票据') assert.match(result.message, /业务码 -3000/)
+                assert.doesNotMatch(warnings.join('\n'), /已续绑|p_skey|secret/)
+                const expectedTickets = scenario === '取票失败' ? [] : [ticket]
+                if (scenario === '连续发布') {
+                    ticket = 'next'
+                    expectedTickets.push(ticket)
+                    assert.equal((await manager.publish({ content: 'hello' })).outcome, 'verified')
+                }
+                assert.deepEqual(posts.map(header => /(?:^|; )p_skey=([^;]+)/.exec(header)?.[1]), expectedTickets)
+                assert.equal(acquires, (cached ? 1 : 0) + (scenario === '连续发布' ? 2 : 1))
+                assert.equal(closes, expectedTickets.length)
+                assert.equal(creates, closes + (cached ? 1 : 0))
+            } finally { await manager.close() }
+            assert.equal(closes, creates)
+        })
+    }
+})
+
+test('普通发布与日记并发共享在途取票，各自释放发布客户端', async t => {
+    const pending = Promise.withResolvers()
+    const sessions = []
+    let acquires = 0, writes = 0, closes = 0
+    const manager = new QzoneManager({ logger, rebind,
+        acquire: () => { acquires++; return pending.promise },
+        createClient: session => {
+            sessions.push(session)
+            const client = new QzoneClient({ session, fetch: async url => {
+                assert.ok(new URL(url).pathname.endsWith('emotion_cgi_publish_v6'))
+                writes++
+                return new Response(null, { status: 401 })
+            } })
+            const close = client.close.bind(client)
+            t.mock.method(client, 'close', async () => { closes++; await close() })
+            return client
+        }
+    })
+    const results = Promise.allSettled([manager.publish({ content: '动态' }), manager.publishDiary({ content: '日记' })])
+    assert.equal(acquires, 1)
+    pending.resolve(grant)
+    for (const result of await results) {
+        assert.equal(result.status, 'rejected')
+        assert.ok(result.reason instanceof QzoneAuthError)
+    }
+    assert.equal(writes, 2)
+    assert.equal(closes, 2)
+    assert.deepEqual(sessions, Array(2).fill({ cookies: grant.cookies, accountId: grant.accountId }))
+    await manager.close()
+})
+
 test('协议获取 Cookie，跳过无票据域名，缺 uin 则以机器人登录账号初始化真实 SDK', async () => {
     for (const platform of ['onebot', 'milky']) {
         const domains = []
@@ -256,22 +353,22 @@ test('轮询在等待读取权限或续绑时被取消，不再发起动态读�
     await manager.close()
 })
 
-test('发布、评论、回复登录失效只续绑不重发，结果不确定时同样不重发', async () => {
-    for (const [serviceMethod, sdkMethod] of [['publish', 'publishPost'], ['comment', 'comment'], ['reply', 'reply']]) {
+test('评论、回复登录失效只续绑不重发，结果不确定时同样不重发', async () => {
+    for (const operation of ['comment', 'reply']) {
         for (const outcome of ['auth', 'unknown']) {
             let writes = 0
             let updates = 0
-            const result = { status: 'unknown' }
+            const result = { outcome: 'unknown' }
             const manager = new QzoneManager({
                 acquire: async () => grant,
                 createClient: () => ({
-                    [sdkMethod]() { writes++; if (outcome === 'auth') auth(); return result },
+                    [operation]() { writes++; if (outcome === 'auth') auth(); return result },
                     async updateSession() { updates++ },
                     async close() {}
                 }), logger, rebind
             })
-            const write = manager[serviceMethod]({})
-            if (outcome === 'auth') await assert.rejects(write, e => e instanceof QzoneWriteAuthError && e.operation === serviceMethod && e.rebound)
+            const write = manager[operation]({})
+            if (outcome === 'auth') await assert.rejects(write, e => e instanceof QzoneWriteAuthError && e.operation === operation && e.rebound)
             else assert.equal(await write, result)
             assert.equal(writes, 1)
             assert.equal(updates, outcome === 'auth' ? 1 : 0)
@@ -280,12 +377,16 @@ test('发布、评论、回复登录失效只续绑不重发，结果不确定�
     }
 })
 
-test('工具在等待 Cookie 时取消不会发布，后续新请求仍可使用同一客户端', async () => {
+test('工具在等待 Cookie 时取消不会发布，后续新请求重新取票发布', async () => {
     const pending = Promise.withResolvers()
     const signals = []
+    let acquires = 0
     const manager = new QzoneManager({
-        acquire: () => pending.promise,
-        createClient: () => ({ async publishPost({ signal }) { signals.push(signal); return { outcome: 'verified' } } }),
+        acquire: () => { acquires++; return pending.promise },
+        createClient: () => ({
+            async publishPost({ signal }) { signals.push(signal); return { outcome: 'verified' } },
+            async close() {}
+        }),
         logger, rebind
     })
     const cancelled = new AbortController()
@@ -298,6 +399,7 @@ test('工具在等待 Cookie 时取消不会发布，后续新请求仍可使用
     const next = new AbortController()
     assert.equal((await post(next.signal)).outcome, 'verified')
     assert.deepEqual(signals, [next.signal])
+    assert.equal(acquires, 2)
 })
 
 test('获取 Cookie 期间卸载，随后到达的授权不会初始化客户端或发帖', async () => {

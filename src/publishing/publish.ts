@@ -4,7 +4,7 @@ import {
     type MutationOutcome, type PublishImageInput
 } from 'qzone-sdk'
 import { CookieAcquireError, NoBotAvailableError } from '../qzone/cookie-source.js'
-import { QzoneWriteAuthError, type QzoneManager } from '../qzone/manager.js'
+import type { QzoneManager } from '../qzone/manager.js'
 import { ImageReadError } from '../image.js'
 import { readPublishImage } from './media.js'
 
@@ -15,9 +15,7 @@ export interface PublishInput {
 
 export function readableError(error: unknown, prefix: string): string {
     let reason: string
-    if (error instanceof QzoneWriteAuthError) {
-        reason = error.rebound ? 'QQ 空间登录态已续绑，请核对发布结果。' : 'QQ 空间登录态失效，自动续绑不可用，请人工处理。'
-    } else if (error instanceof QzoneAuthError) {
+    if (error instanceof QzoneAuthError) {
         const { statusCode, serviceCode } = error.context ?? {}
         reason = 'QQ 空间登录态失效'
         if (statusCode !== undefined) reason += `（HTTP ${statusCode}）`
