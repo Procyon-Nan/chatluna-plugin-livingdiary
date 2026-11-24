@@ -3,7 +3,7 @@ import type {} from '@chatluna/ai-runtime'
 import type { ChatBlock, ChatFileBlock } from '@chatluna/ai'
 import type {} from '@chatluna/storage-files'
 import type { QzoneMedia } from 'qzone-sdk'
-import { downloadImageBytes, ImageReadError, type ImageReadPolicy } from '../image.js'
+import { downloadMediaBytes, MediaReadError, type MediaReadPolicy } from '../media.js'
 import { callModel } from '../model.js'
 import { previewGif } from './gif.js'
 
@@ -35,15 +35,15 @@ function isQzoneImageUrl(url: URL) {
     return ['qpic.cn', 'photo.store.qq.com'].some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))
 }
 
-async function download(url: URL, policy: ImageReadPolicy, signal: AbortSignal) {
-    const bytes = await downloadImageBytes(url, maxImageBytes, signal, policy)
+async function download(url: URL, policy: MediaReadPolicy, signal: AbortSignal) {
+    const bytes = await downloadMediaBytes(url, 'image', maxImageBytes, signal, policy)
     const head = bytes.subarray(0, 12)
     let mime: string
     if (head.subarray(0, 3).toString('hex') === 'ffd8ff') mime = 'image/jpeg'
     else if (head.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') mime = 'image/png'
     else if (['GIF87a', 'GIF89a'].includes(head.toString('ascii', 0, 6))) mime = 'image/gif'
     else if (head.toString('ascii', 0, 4) === 'RIFF' && head.toString('ascii', 8, 12) === 'WEBP') mime = 'image/webp'
-    else throw new ImageReadError('图片格式不受支持。')
+    else throw new MediaReadError('图片格式不受支持。')
     return { bytes, mime }
 }
 
@@ -137,7 +137,7 @@ export async function prepareInteractionMedia(ctx: Context, media: readonly Qzon
             const result = await callModel(ctx, { model: visionRole, purpose: 'livingdiary.interaction.media', cache: false,
                 system: '说明图片中可见的内容和文字。若为动画拼图，按阅读顺序说明画面变化。只描述观察到的内容。',
                 messages: [{ role: 'user', content: parts }] }, signal)
-            if (!result.text.trim()) throw new ImageReadError('读图模型没有返回描述。')
+            if (!result.text.trim()) throw new MediaReadError('读图模型没有返回描述。')
             return [{ type: 'text', text: `${id}：${result.text.trim()}` }]
         })
     }
@@ -164,5 +164,5 @@ export async function prepareInteractionMedia(ctx: Context, media: readonly Qzon
 }
 
 function mediaError(error: unknown) {
-    return error instanceof ImageReadError ? error.message : '图片无法解析。'
+    return error instanceof MediaReadError ? error.message : '图片无法解析。'
 }

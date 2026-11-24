@@ -47,7 +47,7 @@ livingdiary/
 │   ├── config.ts    # 账号、模型、日记、互动及各自的授权设置
 │   ├── persona.ts   # 为自动评论与回复渲染空间预设的人设
 │   ├── model.ts     # 随后台任务取消单步模型调用
-│   ├── image.ts     # 限制图片读取大小、下载时限和取消
+│   ├── media.ts     # 限制图片和视频读取大小、下载时限和取消
 │   ├── prompt-format.ts # 提示词数据块的 XML 转义
 │   ├── status.ts    # 日记和自动互动向状态命令提供的报告
 │   ├── access.ts    # 校验请求来源平台、用户 QQ 号和本轮工具请求者
@@ -57,7 +57,7 @@ livingdiary/
 │   ├── journal/     # 日记和写作素材的持久化、查询及界面数据类型
 │   ├── webui.ts     # 注册日记查询、配置入口和前端资源
 │   ├── auto-interaction/ # 动态轮询、评论线程、媒体读取与互动决策
-│   └── publishing/  # 空间发布工具、配图读取及发布结果
+│   └── publishing/  # 空间发布工具、图片和视频附件读取及发布结果
 ├── tests/           # 空间命令与工具（含 video-tool.test.mjs 转发验证）、日记、自动互动和生命周期测试
 ├── scripts/         # 构建 WebUI、清理编译产物与增量编译记录
 ├── package.json     # 包信息、导出入口、依赖与构建、发布脚本

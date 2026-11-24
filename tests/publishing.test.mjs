@@ -10,6 +10,153 @@ import { fileRefTableOf } from '@chatluna/transform'
 import { registerPublishTool } from '../lib/publishing/tool.js'
 import { publishPost } from '../lib/publishing/publish.js'
 
+test('对话两图两视频的原文件经真实 SDK 组成一条动态，缺项或上传失败不重发', async t => {
+    const photo = width => {
+        const bytes = Buffer.alloc(24)
+        Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').copy(bytes)
+        bytes.writeUInt32BE(width, 16); bytes.writeUInt32BE(16, 20)
+        return bytes
+    }
+    const clip = marker => Buffer.from([0,0,0,16,102,116,121,112,105,115,111,109,0,0,0,marker])
+    const originals = { 'a.png': photo(16), 'b.png': photo(32), 'a.mp4': clip(1), 'b.mp4': clip(2) }
+    let downloads = 0, scans = 0, reads = 0
+    const server = createServer((req, res) => {
+        downloads++
+        assert.equal(req.url, '/a.mp4')
+        res.end(originals['a.mp4'])
+    })
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    t.after(() => new Promise(resolve => server.close(resolve)))
+    const remote = `http://127.0.0.1:${server.address().port}/a.mp4`
+    const blocks = [
+        { type: 'file', mediaType: 'image/png', filename: 'a.png', data: { type: 'data', data: originals['a.png'].toString('base64') } },
+        { type: 'file', mediaType: 'image/png', filename: 'b.png', data: { type: 'reference', reference: 'storage://b.png' } },
+        { type: 'file', mediaType: 'video/mp4', filename: 'a.mp4', data: { type: 'url', url: remote }, preview: { type: 'reference', reference: 'storage://cover' } },
+        { type: 'file', mediaType: 'video/mp4', filename: 'b.mp4', data: { type: 'reference', reference: 'storage://b.mp4' } }
+    ]
+    const messages = [{ role: 'user', content: [{ type: 'envelope', content: blocks.slice(0, 3), quoted: { content: [blocks[3]] } }] }]
+    const files = fileRefTableOf(messages)
+    const subject = { source: 'chat', platform: 'onebot', user: '23' }
+    const call = { principal: {source: 'chat', subject, wakingPrincipals: [subject]},
+        agent: {options: {conversationKey: 'current'}, session: {messages() { scans++; return messages }}},
+        signal: new AbortController().signal }
+    for (const scenario of ['complete', 'formatted-content', 'missing-video', 'upload-failed']) {
+        const content = scenario === 'formatted-content'
+            ? '  模型配写的正文🌙\n\n 图片和视频  一起发布。 '
+            : '模型配写的正文🌙\n\n图片和视频一起发布。'
+        const input = {content, images: blocks.slice(0, 2).map(b => files.refOf(b)), videos: blocks.slice(2).map(b => files.refOf(b))}
+        const requests = [], uploadedImages = [], uploadedVideos = []
+        let submits = 0, tool
+        const client = new QzoneClient({session: {cookies: 'uin=o1234; p_skey=test'}, fetch: async (url, init) => {
+            const request = new Request(url, init)
+            const path = new URL(url).pathname
+            requests.push(path)
+            if (path.includes('/FileBatchControl/')) return Response.json({data: {session: 'upload', slice_size: 1024}})
+            if (path.endsWith('/FileUploadVideo')) {
+                const body = await request.formData()
+                uploadedVideos.push(Buffer.from(await body.get('data').arrayBuffer()))
+                if (scenario === 'upload-failed' && uploadedVideos.length === 2) return Response.json({ret: -5})
+                return Response.json({data: {biz: {sVid: `v${uploadedVideos.length}`}}})
+            }
+            if (path.endsWith('cgi_upload_image')) {
+                const form = new URLSearchParams(await request.text())
+                const name = form.get('filename')
+                uploadedImages.push([name, Buffer.from(form.get('picfile'), 'base64')])
+                return Response.json({data: {albumid: 'album', lloc: name, sloc: name, type: 3, height: 16, width: 16}})
+            }
+            if (path.endsWith('emotion_cgi_publish_v6')) {
+                submits++
+                const form = new URLSearchParams(await request.text())
+                assert.equal(form.get('con'), content)
+                assert.equal(form.get('richtype'), '1\n3\n3')
+                const [photos, ...videos] = form.get('richval').split('\n')
+                assert.deepEqual(photos.split('\t').map(p => p.split(',')[2]), ['a.png', 'b.png'])
+                assert.deepEqual(videos.map(v => new URLSearchParams(v).get('vid')), ['v1', 'v2'])
+                return Response.json({tid: 'mixed'})
+            }
+            assert.ok(path.endsWith('emotion_cgi_msgdetail_v6'), path)
+            return Response.json({tid: 'mixed', uin: '1234', content, pic: [
+                {url3: 'https://m.qpic.cn/a.png'}, {url3: 'https://m.qpic.cn/b.png'},
+                ...(scenario === 'missing-video' ? ['v1'] : ['v1', 'v2']).map(vid => ({video_info: {
+                    vid, url3: `https://cache.tv.qq.com/qqplayerout.swf?v=${vid}`, url1: 'https://m.qpic.cn/cover.png'
+                }}))
+            ]})
+        }})
+        const ctx = { tools: {define(value) {tool = value}}, logger: {warn() {}}, get() { return {async getTempFile(key) {
+            reads++
+            assert.ok(Object.hasOwn(originals, key), key)
+            return {name: key, size: originals[key].length, data: originals[key]}
+        }} } }
+        registerPublishTool(ctx, {allowUserIds: ['23']}, {publish: request => client.publishPost(request)})
+        try {
+            const before = [reads, scans, downloads]
+            const denied = {...subject, user: '24'}
+            await assert.rejects(tool.run(input, {...call, principal: {source: 'chat', subject: denied, wakingPrincipals: [denied]}}), /白名单/)
+            assert.deepEqual([reads, scans, downloads], before)
+            assert.equal(requests.length, 0)
+            const result = await tool.run(input, call)
+            assert.equal(result.outcome, {complete: 'verified', 'formatted-content': 'verified', 'missing-video': 'accepted', 'upload-failed': 'failed'}[scenario], JSON.stringify({result, requests}))
+            assert.equal(scans, before[1] + 1)
+            assert.deepEqual(uploadedVideos, [originals['a.mp4'], originals['b.mp4']])
+            assert.equal(submits, scenario === 'upload-failed' ? 0 : 1)
+            if (scenario !== 'upload-failed') assert.deepEqual(uploadedImages, [['a.png', originals['a.png']], ['b.png', originals['b.png']]])
+            assert.equal(requests.some(p => p.includes('video_get_data')), false)
+        } finally { await client.close() }
+    }
+})
+
+test('视频读取支持内联原文件和纯视频发布，无效附件、超限、取消及错误格式终止发布', async t => {
+    const clip = Buffer.from([0,0,0,16,102,116,121,112,105,115,111,109,0,0,0,0])
+    const inline = {type: 'file', mediaType: 'video/mp4', data: {type: 'data', data: clip.toString('base64')}}
+    const uri = {...inline, data: {type: 'data', data: 'data:video/mp4;base64,' + clip.toString('base64')}}
+    const image = {type: 'file', mediaType: 'image/png', data: {type: 'data', data: 'aW1hZ2U='}}
+    const text = {...inline, data: {type: 'text', text: '视频不可用'}}
+    const files = fileRefTableOf([{role: 'user', content: [inline, uri, image, text]}])
+    const writes = [], reads = []
+    const controller = new AbortController()
+    const ctx = { logger: {warn() {}}, get() {return {async getTempFile(key) {
+        reads.push(key)
+        if (key === 'gone') return null
+        if (key === 'large') return {name: 'large.mp4', size: 128 * 1024 * 1024 + 1, get data() {assert.fail('must reject before loading')} }
+        if (key === 'cancel') controller.abort()
+        return {name: 'original.mp4', size: clip.length, data: clip}
+    }}} }
+    const qzone = {async publish(request) {writes.push(request); return {outcome: 'verified'}}}
+    const publish = videos => publishPost(ctx, qzone, {content: '', videos}, controller.signal, files)
+    assert.equal((await publish([files.refOf(inline), files.refOf(uri), '/files/original.mp4'])).outcome, 'verified')
+    assert.equal(writes.length, 1)
+    assert.equal(writes[0].content, '')
+    assert.deepEqual(writes[0].videos.map(v => Buffer.from(v.data)), [clip, clip, clip])
+    assert.ok(writes[0].videos.every(v => v.name))
+    const cases = [[files.refOf(image), /不是视频/], [files.refOf(text), /原文件不可读取/],
+        ['i' + '0'.repeat(64), /未找到/], ['storage://gone', /临时视频不可用/], ['storage://large', /大小超过/]]
+    for (const [ref, error] of cases) {
+        const result = await publish([files.refOf(inline), ref])
+        assert.equal(result.outcome, 'failed'); assert.match(result.message, error); assert.match(result.message, /第 2 段视频/)
+    }
+    assert.equal(writes.length, 1)
+    const noSession = await publishPost(ctx, qzone, {content: '', videos: [files.refOf(inline)]})
+    assert.match(noSession.message, /当前聊天会话/)
+    let bodyCancelled = false
+    t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({cancel() {bodyCancelled = true}}), {headers: {'content-length': String(128 * 1024 * 1024 + 1)}}))
+    assert.match((await publish(['https://example.invalid/large.mp4?token=SECRET'])).message, /大小超过/)
+    assert.ok(bodyCancelled)
+    globalThis.fetch.mock.mockImplementation(async () => new Response(null, {status: 404}))
+    const expired = await publish(['https://example.invalid/gone.mp4?token=SECRET'])
+    assert.match(expired.message, /视频地址已过期/); assert.doesNotMatch(expired.message, /SECRET/)
+    globalThis.fetch.mock.mockImplementation(async () => new Response('not mp4'))
+    const client = new QzoneClient({session: {cookies: 'uin=o1234; p_skey=test'}, fetch: assert.fail})
+    try {
+        const result = await publishPost(ctx, {publish: request => client.publishPost(request)}, {content: '', videos: ['https://example.invalid/not-video']})
+        assert.equal(result.outcome, 'failed'); assert.match(result.message, /MP4/)
+    } finally {await client.close()}
+    await assert.rejects(publish(['storage://cancel']), {name: 'AbortError'})
+    const count = reads.length
+    await assert.rejects(publish(['storage://original']), {name: 'AbortError'})
+    assert.equal(reads.length, count)
+    assert.equal(writes.length, 1)
+})
+
 test('工具按当前会话 ref 读取原图，引用、多种数据形式和直接地址保持顺序', async t => {
     let downloads = 0, scans = 0
     const server = createServer((_request, response) => { downloads++; response.end('remote') })

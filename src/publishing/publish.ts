@@ -2,16 +2,17 @@ import type { Context } from 'cordis'
 import type { FileRefTable } from '@chatluna/transform'
 import {
     QzoneAuthError, QzoneCancelledError, QzoneError, QzoneValidationError,
-    type MutationOutcome, type PublishImageInput
+    type MutationOutcome, type PublishImageInput, type PublishVideoInput
 } from 'qzone-sdk'
 import { CookieAcquireError, NoBotAvailableError } from '../qzone/cookie-source.js'
 import type { QzoneManager } from '../qzone/manager.js'
-import { ImageReadError } from '../image.js'
-import { readPublishImage } from './media.js'
+import { MediaReadError } from '../media.js'
+import { readPublishMedia } from './media.js'
 
 export interface PublishInput {
     content: string
     images?: readonly string[]
+    videos?: readonly string[]
 }
 
 export function readableError(error: unknown, prefix: string): string {
@@ -25,12 +26,12 @@ export function readableError(error: unknown, prefix: string): string {
     } else if (error instanceof QzoneCancelledError) {
         reason = '插件正在停止，操作已取消。'
     } else if (error instanceof CookieAcquireError || error instanceof NoBotAvailableError ||
-        error instanceof ImageReadError || error instanceof QzoneValidationError) {
+        error instanceof MediaReadError || error instanceof QzoneValidationError) {
         reason = error.message
     } else if (error instanceof QzoneError) {
         reason = `QQ 空间接口错误（${error.code}）。`
     } else {
-        reason = '操作失败，请检查空间服务及配图是否可用。'
+        reason = '操作失败，请检查空间服务及素材是否可用。'
     }
     return `${prefix}：${reason}`
 }
@@ -42,28 +43,37 @@ export const publishOutcomeMessages: Record<MutationOutcome, string> = {
     unknown: '发布结果未知，可用 qzone.feeds 核对。'
 }
 
-/** 命令与工具在所有配图就绪后只提交一次。 */
+/** 命令与工具在全部素材就绪后只提交一次。 */
 export async function publishPost(ctx: Context, qzone: Pick<QzoneManager, 'publish'>, input: PublishInput, signal?: AbortSignal, files?: FileRefTable):
     Promise<{ outcome: MutationOutcome | 'failed'; message: string }> {
     const content = input.content
-    const references = input.images ?? []
-    if (!content.trim() && !references.length) return { outcome: 'failed', message: '请提供要发布的动态内容或图片。' }
-    if (references.length > 9) return { outcome: 'failed', message: '一次最多只能发布 9 张图片。' }
+    const imageRefs = input.images ?? []
+    const videoRefs = input.videos ?? []
+    if (!content.trim() && !imageRefs.length && !videoRefs.length) return { outcome: 'failed', message: '请提供要发布的正文、图片或视频。' }
+    if (imageRefs.length > 9) return { outcome: 'failed', message: '一次最多只能发布 9 张图片。' }
     const images: PublishImageInput[] = []
+    const videos: PublishVideoInput[] = []
+    let reading = ''
     try {
-        for (const reference of references) {
-            images.push(await readPublishImage(ctx, reference, signal, files))
+        for (const reference of imageRefs) {
+            reading = `第 ${images.length + 1} 张配图`
+            images.push(await readPublishMedia(ctx, reference, 'image', signal, files))
+        }
+        for (const reference of videoRefs) {
+            reading = `第 ${videos.length + 1} 段视频`
+            videos.push(await readPublishMedia(ctx, reference, 'video', signal, files))
         }
         signal?.throwIfAborted()
         const result = await qzone.publish({
             content,
             ...(signal ? { signal } : {}),
-            ...(images.length ? { images } : {})
+            ...(images.length ? { images } : {}),
+            ...(videos.length ? { videos } : {})
         })
         return { outcome: result.outcome, message: publishOutcomeMessages[result.outcome] }
     } catch (error) {
         signal?.throwIfAborted()
-        const prefix = error instanceof ImageReadError ? `第 ${images.length + 1} 张配图` : '发布动态失败'
+        const prefix = error instanceof MediaReadError ? reading : '发布动态失败'
         const message = readableError(error, prefix)
         ctx.logger.warn(message)
         return { outcome: 'failed', message }

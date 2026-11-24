@@ -67,7 +67,7 @@ test('状态展示最近一次日记的触发方式、时间和处理结果', as
     assert.match(await status({ session }), /每日日记：.*2026.*（定时）：跳过（当日无记忆）/)
 })
 
-test('手动发布仅读取顶层文本和配图，表情及引用中的配图不会发布', async () => {
+test('手动发布读取顶层文本、图片和视频，表情及引用中的素材不会发布', async () => {
     const content = '  ' + '日记正文🌙'.repeat(30) + '\n\n  第二段  正文\t\n '
     const actions = new Map()
     const bodies = []
@@ -79,15 +79,16 @@ test('手动发布仅读取顶层文本和配图，表情及引用中的配图�
         } },
         get(key) {
             assert.equal(key, 'chatluna_storage')
-            return { async getTempFile(id) { lookups.push(id); return { name: 'a.png', size: 1, data: Buffer.from([7]) } } }
+            return { async getTempFile(id) { lookups.push(id); return { name: id === 'a' ? 'a.png' : 'b.mp4', size: 1, data: Buffer.from([7]) } } }
         }
     }
     registerCommands(ctx, { allowUserIds: ['23'] }, { async publish(req) { bodies.push(req); return { outcome: 'verified' } } }, { digest: null })
     const response = await actions.get('qzone.publish')({ session }, [
         h.text(content.slice(0, 80)), h.text(content.slice(80)), h('face', {}, h.image('https://example.invalid/face.png')),
-        h('quote', {}, h.text('引用正文'), h.image('https://example.invalid/quoted.png')), h.image('storage://a')
+        h('quote', {}, h.text('引用正文'), h.image('https://example.invalid/quoted.png'), h('video', {src: 'https://example.invalid/quoted.mp4'})),
+        h.image('storage://a'), h('video', {src: 'storage://b', poster: 'https://example.invalid/cover.png'})
     ])
     assert.match(response, /发布成功/)
-    assert.deepEqual(lookups, ['a'])
-    assert.deepEqual(bodies, [{ content, images: [{ name: 'a.png', data: Buffer.from([7]) }] }])
+    assert.deepEqual(lookups, ['a', 'b'])
+    assert.deepEqual(bodies, [{ content, images: [{ name: 'a.png', data: Buffer.from([7]) }], videos: [{ name: 'b.mp4', data: Buffer.from([7]) }] }])
 })

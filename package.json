@@ -42,7 +42,7 @@
         "@chatluna/message": "2.0.0-alpha.0",
         "@chatluna/transform": "2.0.0-alpha.0",
         "@chatluna/transform-image": "2.0.0-alpha.0",
-        "qzone-sdk": "^0.4.0",
+        "qzone-sdk": "^0.4.2",
         "schemastery": "^3.18.0"
     },
     "peerDependencies": {
