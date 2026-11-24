@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NoProviderError } from '@chatluna/ai'
-import { QzoneNotFoundError, QzoneValidationError } from 'qzone-sdk'
+import { QzoneClient, QzoneNotFoundError, QzoneValidationError } from 'qzone-sdk'
 import { AutoInteractionRuntime } from '../lib/auto-interaction/runtime.js'
 
 const epoch = Date.parse('2026-11-12T12:00:00Z')
@@ -50,6 +50,48 @@ function fixture(options = {}) {
     })
     return { rows, own, self, friends, replies, comments, deps, decisions, runtime }
 }
+
+test('分享动态跨客户端读取时，监控记录和待处理队列保留类型及最新卡片', async () => {
+    const f = fixture({ enableFriendPostComment: true })
+    const share = { title: '原分享', summary: '摘要', url: 'https://example.invalid/share' }
+    f.self.share = share
+    let complete = false
+    const reads = []
+    f.deps.getPost = async ({ post: target }) => {
+        reads.push(target)
+        const selfReads = reads.filter(item => item.id === 'self').length
+        const client = new QzoneClient({ session: { cookies: 'uin=o100; p_skey=test', tokens: { '100': 't', '200': 't' } },
+            fetch: async url => {
+                const request = new URL(url)
+                assert.ok(request.pathname.endsWith('/mqzone_detail/shuoshuo'))
+                assert.equal(request.searchParams.get('appid'), '202')
+                return Response.json({ data: {
+                    cell_comm: { appid: 202 }, cell_id: { cellid: target.id }, cell_userinfo: { uin: target.authorId },
+                    cell_original: { cell_title: { title: target.id === 'self' ? `自己的分享 ${selfReads}` : '更新后的分享' } },
+                    comment: { num: !complete && (target.id === 'friend' || selfReads > 1) ? 1 : 0, list: [] }
+                } })
+            } })
+        try { return await client.getPost({ post: target }) } finally { await client.close() }
+    }
+    f.deps.decide = async input => { f.decisions.push(input); return { action: 'skip' } }
+    await f.runtime.runRound()
+    assert.equal(f.runtime.state.monitoredPosts.get('100:self').post.share.title, '自己的分享 1')
+    const friend = { ...post('friend', '200', [], 1), share }
+    f.friends.push(friend)
+    await f.runtime.runRound()
+    assert.equal(f.decisions.length, 0)
+    assert.equal(f.runtime.state.monitoredPosts.get('100:self').post.share.title, '自己的分享 2')
+    assert.equal(f.runtime.state.pendingTriggers.size, 1)
+    assert.equal([...f.runtime.state.pendingTriggers.values()][0].post.share.title, '更新后的分享')
+    complete = true
+    await f.runtime.runRound()
+    assert.equal(f.decisions.length, 1)
+    assert.deepEqual(f.decisions[0].detail.share, { ...share, title: '更新后的分享' })
+    assert.equal(f.runtime.state.pendingTriggers.size, 0)
+    assert.ok(reads.every(item => item.share && item.author))
+    assert.equal(reads.filter(item => item.id === 'friend')[1].share.title, '更新后的分享')
+    assert.equal(f.comments.length + f.replies.length, 0)
+})
 
 test('自己空间只监控真实 SDK 当前账号的个人主页；混入别人的帖子不会收到无关评论回复', async t => {
     const { QzoneClient } = await import('qzone-sdk')

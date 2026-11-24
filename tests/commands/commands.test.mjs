@@ -58,6 +58,31 @@ test('空间昵称和正文中的消息标签只按文字显示', async () => {
     assert.ok(elements[0].attrs.content.includes(nickname + '：' + content))
 })
 
+test('分享卡片单独展示标题、摘要和完整链接，空字段省略且消息标签只显示为文本', async () => {
+    const url = 'https://example.invalid/watch?id=' + 'x'.repeat(150) + '&from=qzone'
+    for (const content of ['', '我的配文']) {
+        const feeds = commands({ listFeedPage: async () => ({ items: [{
+            createdAt: null, author: { nickname: '好友' }, content, likeCount: 2, commentCount: 1,
+            share: { title: '<at type="all"/>', summary: '摘要'.repeat(60), url, previewUrl: 'https://m.qpic.cn/cover' }
+        }] }) }).get('qzone.feeds')
+        const elements = h.normalize(await feeds({ session }))
+        assert.deepEqual(elements.map(e => e.type), ['text'])
+        const text = elements[0].attrs.content
+        assert.ok(text.includes(`好友：${content}（赞 2・评论 1）`))
+        assert.ok(text.includes('分享：<at type="all"/>'))
+        assert.ok(text.includes('摘要：' + '摘要'.repeat(50) + '…'))
+        assert.ok(text.endsWith('链接：' + url))
+        assert.ok(!text.includes('qpic.cn'))
+    }
+    const feeds = commands({ listFeedPage: async () => ({ items: [{
+        createdAt: null, author: { nickname: '好友' }, content: '', likeCount: 0, commentCount: 0,
+        share: { title: '', summary: '', url }
+    }] }) }).get('qzone.feeds')
+    const text = await feeds({ session })
+    assert.doesNotMatch(text, /分享：|摘要：|undefined/)
+    assert.match(text, /链接：/)
+})
+
 test('状态展示最近一次日记的触发方式、时间和处理结果', async () => {
     const reports = { digest: null }
     const service = { status: () => ({ bot: null, client: { initialized: false, rebind: { consecutiveFailures: 0 } } }) }

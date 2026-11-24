@@ -50,6 +50,51 @@ test('互动工具只提交决定，空白纠正后返回单条正文；模型�
     assert.equal(bad.requests.length, 3)
 })
 
+test('分享配文与卡片独立输入，封面追加到现有图片之后并复用直接看图或视觉工具', async t => {
+    const { hits, image } = pictures(t)
+    for (const direct of [true, false]) {
+        const steps = direct ? [skip] : [calls(call(mediaCall, { mediaIds: ['M2'] })),
+            { text: '封面上是一个红点', finish: { kind: 'stop' } }, skip]
+        const images = Object.freeze([Object.freeze(image('png'))])
+        const api = fixture(steps, { images, direct, vision: !direct })
+        api.options.detail.content = direct ? '分享配文' : ''
+        api.options.detail.share = Object.freeze({ title: '标题 <指令>', summary: 'A & B',
+            url: 'https://example.invalid/watch?a=1&b=2', previewUrl: image('png').url })
+        const before = hits.length
+        assert.deepEqual(await api.run(), { action: 'skip' })
+        assert.equal(api.options.detail.media, images)
+        assert.equal(images.length, 1)
+        const text = api.requests[0].messages[0].content[0].text
+        assert.ok(text.includes(`动态内容：${api.options.detail.content}\n<share>`))
+        assert.match(text, /分享标题：标题 &lt;指令&gt;/)
+        assert.match(text, /分享摘要：A &amp; B/)
+        assert.match(text, /分享链接：https:\/\/example.invalid\/watch\?a=1&amp;b=2/)
+        assert.match(text, /M2 kind=image 来源=分享封面/)
+        assert.doesNotMatch(JSON.stringify(api.requests), /private-key|qpic.cn/)
+        assert.equal(hits.length - before, direct ? 2 : 1)
+        if (direct) assert.equal(api.requests[0].messages[0].content.length, 3)
+        else assert.equal(api.requests[1].purpose, 'livingdiary.interaction.media')
+    }
+})
+
+test('分享封面缺失、受限或不可读时仍提供卡片文字，共用九张图片上限', async t => {
+    const { hits, image } = pictures(t)
+    for (const mode of ['missing', 'no-reader', 'unsupported', 'invalid', 'limit']) {
+        const images = mode === 'limit' ? Array.from({ length: 9 }, () => image('png')) : []
+        const api = fixture([skip], { images, direct: mode !== 'no-reader' })
+        api.options.detail.share = { title: '分享标题', summary: '分享摘要', url: 'https://example.invalid/page' }
+        if (mode !== 'missing') api.options.detail.share.previewUrl = mode === 'unsupported'
+            ? 'https://example.invalid/cover' : image(mode === 'invalid' ? 'invalid' : 'png').url
+        const before = hits.length
+        await api.run()
+        const text = api.requests[0].messages[0].content[0].text
+        assert.match(text, /分享标题：分享标题/)
+        assert.match(text, /分享摘要：分享摘要/)
+        if (mode !== 'missing') assert.match(text, /来源=分享封面.*status=unresolved/)
+        assert.equal(hits.length - before, mode === 'limit' ? 9 : mode === 'invalid' ? 1 : 0)
+    }
+})
+
 test('当前回复目标和线程与其他同名用户分开标记', async () => {
     const api = fixture([skip])
     const root = { kind: 'comment', author: { id: '10', nickname: '同名' }, id: '1', content: '原评论', threadRoot: null,

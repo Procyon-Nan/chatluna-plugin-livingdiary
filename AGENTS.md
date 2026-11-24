@@ -52,11 +52,11 @@ livingdiary/
 │   ├── status.ts    # 日记和自动互动向状态命令提供的报告
 │   ├── access.ts    # 校验请求来源平台、用户 QQ 号和本轮工具请求者
 │   ├── qzone/       # 获取登录态、管理 SDK 客户端及续绑，video-tool.ts 提供空间视频查询
-│   ├── commands/    # qzone 命令、动态和状态的展示
+│   ├── commands/    # qzone 命令、动态及分享卡片和状态的展示
 │   ├── daily-digest/ # 日记调度、记忆筛选、模型决策与运行报告
 │   ├── journal/     # 日记和写作素材的持久化、查询及界面数据类型
 │   ├── webui.ts     # 注册日记查询、配置入口和前端资源
-│   ├── auto-interaction/ # 动态轮询、评论线程、媒体读取与互动决策
+│   ├── auto-interaction/ # 动态轮询、评论线程、分享卡片与封面读取及互动决策
 │   └── publishing/  # 空间发布工具、图片和视频附件读取及发布结果
 ├── tests/           # 空间命令与工具（含 video-tool.test.mjs 转发验证）、日记、自动互动和生命周期测试
 ├── scripts/         # 构建 WebUI、清理编译产物与增量编译记录

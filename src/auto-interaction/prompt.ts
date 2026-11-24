@@ -139,12 +139,19 @@ export function buildInteractionPrompt(
         '</output_contract>'
     ].join('\n')
     const { text: commentsText, target } = formatComments(detail, input.activeComment)
+    const shareBlock: string[] = []
+    if (detail.share) {
+        const lines = [`分享标题：${detail.share.title}`, `分享摘要：${detail.share.summary}`]
+        if (detail.share.url) lines.push(`分享链接：${detail.share.url}`)
+        shareBlock.push(...formatXmlBlock('share', lines.join('\n')))
+    }
     const text = [
         '<interaction_input>',
         '<post>',
         `动态创建时间：${escapeXmlText(detail.createdAt ?? 'unknown')}`,
         `动态作者：${escapeXmlText(detail.author.nickname)}(id:${escapeXmlText(detail.author.id)})`,
         `动态内容：${escapeXmlText(detail.content)}`,
+        ...shareBlock,
         ...(media.lines.length > 0
             ? ['<media>', media.lines.map(escapeXmlText).join('\n'), '</media>']
             : []),

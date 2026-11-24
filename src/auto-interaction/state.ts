@@ -11,7 +11,7 @@ export type InteractionTriggerKind =
 export interface PendingTrigger {
     readonly key: string
     readonly kind: InteractionTriggerKind
-    readonly post: PostReference
+    post: QzonePost
     readonly commentKey: string | null
     readonly occurredAt: number | null
     readonly detectedAt: number
@@ -19,7 +19,7 @@ export interface PendingTrigger {
 
 export interface MonitoredPost {
     readonly key: string
-    post: PostReference
+    post: QzonePost
     readonly owner: 'self' | 'friend'
     activityAt: number
     baselineReady: boolean
@@ -117,7 +117,7 @@ export function isInteractionActorAllowed(
 }
 
 export function createMonitoredPost(
-    post: PostReference,
+    post: QzonePost,
     owner: 'self' | 'friend',
     activityAt: number,
     baselineReady: boolean,
@@ -125,7 +125,7 @@ export function createMonitoredPost(
 ): MonitoredPost {
     return {
         key: postKey(post),
-        post: { id: post.id, authorId: post.authorId },
+        post,
         owner,
         activityAt,
         baselineReady,
@@ -141,8 +141,8 @@ export function baselineMonitoredPost(
     detail: QzonePost,
     detectedAt: number
 ): void {
+    monitored.post = detail
     if (!detail.commentsComplete) return
-    monitored.post = { id: detail.id, authorId: detail.authorId }
     monitored.seenComments.clear()
     for (const comment of detail.comments) {
         monitored.seenComments.add(commentKey(detail, comment))
@@ -175,6 +175,7 @@ export function discoverCommentTriggers(
     detail: QzonePost,
     options: DiscoverCommentsOptions
 ): readonly PendingTrigger[] {
+    monitored.post = detail
     if (!detail.commentsComplete) return []
     if (!monitored.baselineReady) {
         baselineMonitoredPost(monitored, detail, options.detectedAt)
@@ -184,7 +185,6 @@ export function discoverCommentTriggers(
     const triggers: PendingTrigger[] = []
     const ignoreThrough = monitored.ignoreCommentsThrough
     const ignoreUndated = monitored.baselineObservationPending
-    monitored.post = { id: detail.id, authorId: detail.authorId }
     for (const comment of detail.comments) {
         const nodeKey = commentKey(detail, comment)
         if (monitored.seenComments.has(nodeKey)) continue
@@ -225,7 +225,7 @@ export function discoverCommentTriggers(
         triggers.push({
             key: triggerKey(kind, detail, nodeKey),
             kind,
-            post: { id: detail.id, authorId: detail.authorId },
+            post: detail,
             commentKey: nodeKey,
             occurredAt,
             detectedAt: options.detectedAt
@@ -242,7 +242,7 @@ export function createFriendPostTrigger(
     return {
         key: triggerKey('friend-post', post),
         kind: 'friend-post',
-        post: { id: post.id, authorId: post.authorId },
+        post,
         commentKey: null,
         occurredAt: timestampOf(post.createdAt),
         detectedAt

@@ -2,7 +2,7 @@ import type { Context } from 'cordis'
 import type {} from '@chatluna/ai-runtime'
 import type { ChatBlock, ChatFileBlock } from '@chatluna/ai'
 import type {} from '@chatluna/storage-files'
-import type { QzoneMedia } from 'qzone-sdk'
+import type { QzoneMedia, QzoneShareCard } from 'qzone-sdk'
 import { downloadMediaBytes, MediaReadError, type MediaReadPolicy } from '../media.js'
 import { callModel } from '../model.js'
 import { previewGif } from './gif.js'
@@ -67,8 +67,11 @@ type Download = Awaited<ReturnType<typeof download>>
 
 /** 只在当前动态内用 M 编号读取图片；给模型的内容不携带 QQ 下载地址。 */
 export async function prepareInteractionMedia(ctx: Context, media: readonly QzoneMedia[], model: string,
-    signal: AbortSignal): Promise<PreparedInteractionMedia> {
+    signal: AbortSignal, share?: QzoneShareCard): Promise<PreparedInteractionMedia> {
     signal.throwIfAborted()
+    const sources: readonly QzoneMedia[] = share?.previewUrl
+        ? [...media, { kind: 'image', url: share.previewUrl }]
+        : media
     const imageParts: ChatFileBlock[] = []
     const lines: string[] = []
     const readers = new Map<string, () => Promise<ChatBlock[]>>()
@@ -76,7 +79,7 @@ export async function prepareInteractionMedia(ctx: Context, media: readonly Qzon
     const policy = { remainingBytes: maxTotalBytes, allowUrl: isQzoneImageUrl }
     let direct = false
     let vision = false
-    if (media.some(item => item.kind === 'image')) {
+    if (sources.some(item => item.kind === 'image')) {
         direct = (await ctx.ai.caps<'chat'>(model, signal)).image === true
         if (!direct) {
             try {
@@ -86,10 +89,10 @@ export async function prepareInteractionMedia(ctx: Context, media: readonly Qzon
             }
         }
     }
-    for (const [index, item] of media.entries()) {
+    for (const [index, item] of sources.entries()) {
         signal.throwIfAborted()
         const id = `M${index + 1}`
-        const description = metadata(item, id)
+        const description = metadata(item, id) + (index === media.length ? ' 来源=分享封面' : '')
         if (item.kind !== 'image') {
             lines.push(`${description} status=metadata-only`)
             continue

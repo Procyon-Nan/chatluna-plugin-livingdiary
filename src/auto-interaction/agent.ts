@@ -30,7 +30,7 @@ function reportResults(messages: ChatSpecMessage[], calls: readonly ChatToolCall
 
 /** 三步内只读取本条动态的媒体并给出一次决定；实际评论和回复由轮询任务执行。 */
 export async function decideInteraction(ctx: Context, options: InteractionOptions, signal: AbortSignal): Promise<InteractionDecision> {
-    const media = await prepareInteractionMedia(ctx, options.detail.media, options.model, signal)
+    const media = await prepareInteractionMedia(ctx, options.detail.media, options.model, signal, options.detail.share)
     const { systemPrompt, inputMessage } = buildInteractionPrompt({ ...options, media })
     const messages = [inputMessage]
     const toolSpecs = media.readable.size ? [decisionTool, mediaTool] : [decisionTool]

@@ -30,11 +30,16 @@ export function formatFeedList(items: readonly QzonePost[]): string {
     return items
         .map((post, index) => {
             const liked = post.liked ? '・已赞' : ''
-            return (
+            const line = (
                 `${index + 1}. ${formatTime(post.createdAt)} ` +
                 `${post.author.nickname}：${sliceContent(post.content)}` +
                 `（赞 ${post.likeCount}・评论 ${post.commentCount}${liked}）`
             )
+            const lines = [line]
+            if (post.share?.title) lines.push(`分享：${sliceContent(post.share.title)}`)
+            if (post.share?.summary) lines.push(`摘要：${sliceContent(post.share.summary)}`)
+            if (post.share?.url) lines.push(`链接：${post.share.url}`)
+            return lines.join('\n')
         })
         .join('\n')
 }

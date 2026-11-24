@@ -442,6 +442,7 @@ export class AutoInteractionRuntime {
                 this.#recordError('detail-refresh', stats, '读取待处理动态失败，等待下一轮重试')
                 continue
             }
+            trigger.post = detail
             if (!detail.commentsComplete) {
                 stats.incompleteSnapshots += 1
                 blockedPosts.add(postKey(trigger.post))
@@ -583,7 +584,7 @@ export class AutoInteractionRuntime {
     }
 
     async #refreshSeenAfterWrite(
-        post: QzonePost | PendingTrigger['post'],
+        post: QzonePost,
         stats: RoundStats
     ) {
         const monitored = this.state.monitoredPosts.get(postKey(post))
@@ -607,10 +608,7 @@ export class AutoInteractionRuntime {
     }
 
     #collectComments(monitored: MonitoredPost, detail: QzonePost, stats: RoundStats) {
-        if (!detail.commentsComplete) {
-            stats.incompleteSnapshots++
-            return
-        }
+        if (!detail.commentsComplete) stats.incompleteSnapshots++
         const triggers = discoverCommentTriggers(monitored, detail, {
             botId: this.#botId!, whitelistEnabled: this.#options.whitelistEnabled,
             allowIds: this.#options.allowIds, detectedAt: this.#deps.now().getTime()

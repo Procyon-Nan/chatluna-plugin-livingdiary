@@ -53,13 +53,13 @@ guide.commands: Commands and posting from chat
 guide.cmd.status: qzone.status
 guide.use.status: Check the login state, latest diary result and interaction status.
 guide.cmd.feeds: qzone.feeds 3
-guide.use.feeds: Read the bot’s three latest posts.
+guide.use.feeds: Read the bot’s three latest posts, including share card titles, summaries and full links.
 guide.cmd.publish: qzone.publish It rained today
 guide.use.publish: Publish text, images and MP4 videos in one post, or media alone. Up to nine images, each limited to 32 MiB; each video is limited to 128 MiB.
 guide.cmd.digest: qzone.digest
 guide.use.digest: Write an entry now using the current diary publishing setting.
 guide.tool: Allowlisted users can ask for a friend's Qzone video in the current chat. Enable the publishing tool (enablePublishTool), send images and MP4 videos, then ask the bot to write a caption and publish them together. The tool uploads the selected original files in one post.
 guide.interactions: Automatic comments and replies
-guide.interactionConfig: Choose a Qzone preset and an interaction model (subModel), then add QQ numbers to interactionAllowUserIds. This list is independent of the command allowlist. By default the bot only interacts with people on this list, so leaving it empty prevents automatic interactions.
+guide.interactionConfig: Choose a Qzone preset and an interaction model (subModel), then add QQ numbers to interactionAllowUserIds. This list is independent of the command allowlist. By default the bot only interacts with people on this list, so leaving it empty prevents automatic interactions. The model receives share card titles, summaries and links. Covers use the interaction model or @vision for image reading, sharing the limits of nine images per interaction, 15 MiB per image and 45 MiB in total.
 guide.comments: Turn on friend comments (enableFriendPostComment) to let the bot consider commenting on new posts from friends. Set interactionMonitorPostLimit to the number of posts whose comments you want to follow, or zero to turn off replies. On startup the bot records existing activity and begins handling new posts and comments at the next check.
 guide.receipt: Unpublished means the diary was saved and no publication was attempted. When publishing is on, each entry is sent once. If QQ returns a post ID, LivingDiary immediately reads that post. Only a successful read counts as published. All other attempts are marked as failed.
