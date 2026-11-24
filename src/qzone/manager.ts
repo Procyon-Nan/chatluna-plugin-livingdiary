@@ -75,7 +75,7 @@ export class QzoneManager {
     readonly #rebind: RebindController
     readonly #deps: QzoneManagerDeps
     #client: QzoneClient | null = null
-    #initInFlight?: Promise<QzoneClient>
+    #pendingGrant?: Promise<QzoneCookieGrant>
     #closed = false
 
     constructor(deps: QzoneManagerDeps) {
@@ -114,21 +114,20 @@ export class QzoneManager {
     }
 
     /** SDK 也会用最近动态的相同正文确认发布；日记只接受按回执 ID 读取的详情。 */
-    publishDiary(request: Pick<PublishPostOptions, 'content' | 'signal'>): Promise<boolean> {
-        return this.#runWrite('publish', '发布日记', request.signal, async client => {
-            let readById = false
-            // 单次发布独享客户端，其他命令或轮询读详情不会影响这篇日记。
-            const diary = this.#deps.createClient(client.exportSession(), event => {
-                if (event.phase === 'request.start' &&
-                    (event.endpoint === 'post.detail.legacy' || event.endpoint === 'post.detail.h5')) readById = true
-            })
-            try {
-                const { outcome } = await diary.publishPost(request)
-                return readById && outcome === 'verified'
-            } finally {
-                await diary.close()
-            }
+    async publishDiary(request: Pick<PublishPostOptions, 'content' | 'signal'>): Promise<boolean> {
+        const { cookies, accountId } = await this.#acquire(request.signal)
+        this.#assertOpen(request.signal)
+        let readById = false
+        const diary = this.#deps.createClient({ cookies, accountId }, event => {
+            if (event.phase === 'request.start' &&
+                (event.endpoint === 'post.detail.legacy' || event.endpoint === 'post.detail.h5')) readById = true
         })
+        try {
+            const { outcome } = await diary.publishPost(request)
+            return readById && outcome === 'verified'
+        } finally {
+            await diary.close()
+        }
     }
 
     /** 评论动态；登录态失效时仅触发续绑，不自动重放。 */
@@ -164,27 +163,28 @@ export class QzoneManager {
 
     async close(): Promise<void> {
         this.#closed = true
-        await this.#initInFlight?.catch(() => {})
+        await this.#pendingGrant?.catch(() => {})
         await this.#rebind.settled()
         const client = this.#client
         this.#client = null
         await client?.close()
     }
 
-    #assertOpen(): void {
+    #assertOpen(signal?: AbortSignal): void {
         if (this.#closed) throw new QzoneCancelledError('QQ 空间客户端已随插件停止释放')
+        signal?.throwIfAborted()
+    }
+
+    #acquire(signal?: AbortSignal): Promise<QzoneCookieGrant> {
+        this.#assertOpen(signal)
+        return this.#pendingGrant ??= this.#deps.acquire().finally(() => { this.#pendingGrant = undefined })
     }
 
     async #getClient(): Promise<QzoneClient> {
-        this.#assertOpen()
         if (this.#client) return this.#client
-        if (!this.#initInFlight) {
-            this.#initInFlight = this.#deps.acquire().then(({ cookies, accountId }) => {
-                this.#assertOpen()
-                return this.#client = this.#deps.createClient({ cookies, accountId })
-            }).finally(() => { this.#initInFlight = undefined })
-        }
-        return this.#initInFlight
+        const { cookies, accountId } = await this.#acquire()
+        this.#assertOpen()
+        return this.#client ??= this.#deps.createClient({ cookies, accountId })
     }
 
     async #runRead<T>(
@@ -194,8 +194,7 @@ export class QzoneManager {
     ): Promise<T> {
         signal?.throwIfAborted()
         const client = await this.#getClient()
-        this.#assertOpen()
-        signal?.throwIfAborted()
+        this.#assertOpen(signal)
         try {
             return await operation(client)
         } catch (error) {
@@ -207,8 +206,7 @@ export class QzoneManager {
             if (!rebound) {
                 throw error
             }
-            this.#assertOpen()
-            signal?.throwIfAborted()
+            this.#assertOpen(signal)
             return operation(client)
         }
     }
@@ -221,8 +219,7 @@ export class QzoneManager {
     ): Promise<T> {
         signal?.throwIfAborted()
         const client = await this.#getClient()
-        this.#assertOpen()
-        signal?.throwIfAborted()
+        this.#assertOpen(signal)
         try {
             return await operation(client)
         } catch (error) {
@@ -240,8 +237,7 @@ export class QzoneManager {
         this.#assertOpen()
         try {
             await this.#rebind.attempt(async () => {
-                this.#assertOpen()
-                const { cookies, accountId } = await this.#deps.acquire()
+                const { cookies, accountId } = await this.#acquire()
                 this.#assertOpen()
                 await client.updateSession({ cookies, accountId })
             })

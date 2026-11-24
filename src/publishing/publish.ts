@@ -18,7 +18,11 @@ export function readableError(error: unknown, prefix: string): string {
     if (error instanceof QzoneWriteAuthError) {
         reason = error.rebound ? 'QQ 空间登录态已续绑，请核对发布结果。' : 'QQ 空间登录态失效，自动续绑不可用，请人工处理。'
     } else if (error instanceof QzoneAuthError) {
-        reason = 'QQ 空间登录态失效，请稍后重试。'
+        const { statusCode, serviceCode } = error.context ?? {}
+        reason = 'QQ 空间登录态失效'
+        if (statusCode !== undefined) reason += `（HTTP ${statusCode}）`
+        if (serviceCode !== undefined) reason += `（业务码 ${serviceCode}）`
+        reason += '。'
     } else if (error instanceof QzoneCancelledError) {
         reason = '插件正在停止，操作已取消。'
     } else if (error instanceof CookieAcquireError || error instanceof NoBotAvailableError ||

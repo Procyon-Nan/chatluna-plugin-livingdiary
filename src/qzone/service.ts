@@ -33,24 +33,22 @@ export function createQzoneService(ctx: Context, config: QzoneConfig) {
     const currentBot = () => selectCookieBot(ctx.satori.bots, config.platform, boundSelfId)
     return new QzoneManager({
         currentBot,
-        acquire: () => {
+        acquire: async () => {
             const bot = currentBot()
             if (!bot) throw new NoBotAvailableError('未找到与 platform/selfId 匹配的在线 OneBot/Milky 机器人')
-            return acquireQzoneCookies(bot)
+            const grant = await acquireQzoneCookies(bot)
+            boundSelfId = canonicalQQ(grant.accountId)
+            return grant
         },
-        createClient: (session, observe) => {
-            const client = new QzoneClient({
-                session,
-                logger(event) {
-                    observe?.(event)
-                    if (config.debug && event.phase === 'read.fallback') {
-                        ctx.logger.info(fallbackMessage(event))
-                    }
+        createClient: (session, observe) => new QzoneClient({
+            session,
+            logger(event) {
+                observe?.(event)
+                if (config.debug && event.phase === 'read.fallback') {
+                    ctx.logger.info(fallbackMessage(event))
                 }
-            })
-            boundSelfId = canonicalQQ(session.accountId)
-            return client
-        },
+            }
+        }),
         logger: ctx.logger,
         rebind: {
             minIntervalSeconds: config.rebindMinIntervalSeconds,

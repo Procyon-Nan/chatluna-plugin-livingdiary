@@ -151,7 +151,7 @@ test('状态不索取 Cookie，所选机器人离线时读操作不连接 SDK', 
     await service.close()
 })
 
-test('空间账号必须是取 Cookie 的机器人，已绑定的账号下线后不切换到另一 QQ', async () => {
+test('首次读取和日记发布同时取票时绑定同一 QQ，下线后不切换账号', async t => {
     const makeBot = (selfId, cookieUin) => ({
         selfId, platform: 'onebot', status: 1,
         internal: { getCookies: async () => 'skey=test; uin=o' + cookieUin }
@@ -159,13 +159,22 @@ test('空间账号必须是取 Cookie 的机器人，已绑定的账号下线后
     const first = makeBot('123', '000123')
     const second = makeBot('456', '456')
     const service = createQzoneService({ satori: { bots: [first, second] }, logger }, { platform: 'auto' })
-    // limit 在 SDK 发起网络请求前校验，可离线驱动实际 SDK 的登录初始化。
-    await assert.rejects(service.listFeedPage({ scope: 'self', limit: 0 }), /limit/)
-    assert.equal(service.status().bot.selfId, '123')
-    assert.equal(service.status().client.accountId, '000123')
+    const pending = Promise.withResolvers()
+    first.internal.getCookies = () => pending.promise
+    const hosts = []
+    t.mock.method(globalThis, 'fetch', async (_, init) => {
+        hosts.push(new URLSearchParams(init.body).get('hostuin'))
+        return new Response(null, { status: 401 })
+    })
+    const read = assert.rejects(service.listFeedPage({ scope: 'self', limit: 0 }), /limit/)
     first.status = 0
+    const diary = assert.rejects(service.publishDiary({ content: '日记' }), QzoneAuthError)
+    pending.resolve('skey=test; uin=o000123')
+    await Promise.all([read, diary])
+    assert.deepEqual(hosts, ['000123'])
     assert.equal(service.status().bot, null)
     assert.equal(service.status().client.accountId, '000123')
+    await assert.rejects(service.publishDiary({ content: '日记' }), /未找到.*在线/)
     await service.close()
 
     const mismatched = adaptOneBotCookieBot(makeBot('123', '456'))
@@ -296,12 +305,25 @@ test('获取 Cookie 期间卸载，随后到达的授权不会初始化客户端
     let created = false
     const manager = new QzoneManager({ acquire: () => pending.promise, createClient() { created = true }, logger, rebind })
     const writing = manager.publish({ content: 'hello' })
+    const diary = manager.publishDiary({ content: '日记' })
     const closing = manager.close()
     pending.resolve(grant)
     await assert.rejects(writing, QzoneCancelledError)
+    await assert.rejects(diary, QzoneCancelledError)
     await closing
     assert.equal(created, false)
     await assert.rejects(manager.publish({ content: 'later' }), QzoneCancelledError)
+})
+
+test('取票期间取消日记，票据返回后不再创建发布客户端', async () => {
+    const pending = Promise.withResolvers()
+    const controller = new AbortController()
+    const manager = new QzoneManager({ acquire: () => pending.promise, createClient: assert.fail, logger, rebind })
+    const writing = manager.publishDiary({ content: '日记', signal: controller.signal })
+    controller.abort()
+    pending.resolve(grant)
+    await assert.rejects(writing, { name: 'AbortError' })
+    await manager.close()
 })
 
 test('续绑期间卸载，旧读操作不重放，不接收新发布，不再更新登录态', async () => {

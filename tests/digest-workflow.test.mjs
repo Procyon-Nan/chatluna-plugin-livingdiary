@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { runDailyDigest } from '../lib/daily-digest/workflow.js'
 import { decideDigest } from '../lib/daily-digest/model.js'
+import { createQzoneService } from '../lib/qzone/service.js'
 
 const start = new Date(2026, 10, 11, 12)
 const midnight = new Date(2026, 10, 11)
@@ -111,6 +112,51 @@ test('关闭空间发布时，写好的正文和参考记忆仍存入日记册',
     assert.deepEqual(api.saved, [{ at: start, entry: { presetId: 'p', presetName: '人设 A', content: text, memories: [{ id, content }] } }])
     assert.deepEqual(api.writes, [])
     assert.deepEqual(api.outcomes, [])
+})
+
+test('日记用机器人当前的票据发帖，发布报告保留鉴权错误码', async t => {
+    for (const scenario of ['已有客户端', 'HTTP 401', '业务码 -3000', '机器人离线']) {
+        await t.test(scenario, async t => {
+            const api = fixture()
+            const posts = [], grants = []
+            let ticket = 'cached'
+            const bot = { platform: 'onebot', selfId: '5678', status: 1, internal: {
+                async getCookies() { grants.push(ticket); return `uin=o5678; p_skey=${ticket}` }
+            } }
+            const service = createQzoneService({ satori: { bots: [bot] }, logger: quiet }, { platform: 'onebot' })
+            t.after(() => service.close())
+            api.qzone.publishDiary = input => service.publishDiary(input)
+            t.mock.method(globalThis, 'fetch', async (url, init) => {
+                const path = new URL(url).pathname
+                if (path.endsWith('emotion_cgi_msgdetail_v6')) {
+                    return Response.json({ tid: 'diary-id', uin: bot.selfId, content: text })
+                }
+                assert.ok(path.endsWith('emotion_cgi_publish_v6'))
+                assert.equal(init.method, 'POST')
+                posts.push(new Headers(init.headers).get('cookie'))
+                if (scenario === 'HTTP 401') return new Response(null, { status: 401 })
+                if (scenario === '业务码 -3000') return Response.json({ code: -3000, msg: 'p_skey=secret' })
+                return Response.json({ code: 0, tid: 'diary-id' })
+            })
+            if (scenario === '已有客户端') {
+                await service.getPost({ post: { id: 'diary-id', authorId: bot.selfId } })
+            }
+            ticket = 'current'
+            if (scenario === '机器人离线') bot.status = 0
+            const report = await api.run()
+            assert.equal(api.saved[0].entry.content, text)
+            assert.deepEqual(api.outcomes, [{ id: '1', status: scenario === '已有客户端' ? 'published' : 'failed' }])
+            const online = bot.status === 1
+            const expected = scenario === '已有客户端' ? ['cached', 'current'] : ['current']
+            assert.deepEqual(grants, online ? expected : [])
+            assert.equal(posts.length, online ? 1 : 0)
+            if (online) assert.match(posts[0], /\bp_skey=current(?:;|$)/)
+            if (online && scenario !== '已有客户端') {
+                assert.ok(report.detail.includes(scenario))
+                assert.doesNotMatch(report.detail, /已续绑|p_skey|secret/)
+            }
+        })
+    }
 })
 
 test('模型跳过则不存不发；未验证和空间写入异常都记为发布失败，不重发', async () => {
