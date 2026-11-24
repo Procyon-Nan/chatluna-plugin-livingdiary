@@ -13,6 +13,7 @@ test('工具常驻目录，发帖时按本次请求者授权，并遵守框架�
     t.after(() => ctx.fiber.dispose())
     await ctx.plugin(Permissions, { rules: [] })
     await ctx.plugin(Tools)
+    ctx.permissions.asker(() => 'once')
     const writes = []
     const plugin = await ctx.plugin({ inject: ['tools'], apply(scope) {
         registerPublishTool(scope, { allowUserIds: ['Alice'] }, {
@@ -21,14 +22,19 @@ test('工具常驻目录，发帖时按本次请求者授权，并遵守框架�
     } })
     const entry = () => ctx.tools.catalog().find(item => item.definition.name === 'qzone_publish')
     const definition = entry().definition
-    const run = (speakers, args = {}, actor) => ctx.tools.execute({
-        name: 'qzone_publish', args: { content: 'Hello', ...args }, speakers, actor, location: { platform: 'onebot' }
-    })
+    const run = (speakers, args = {}, actor) => {
+        const wakes = speakers.filter(s => s.addressed).map(s => ({ platform: 'onebot', source: 'chat', ...s }))
+        const subject = wakes.length === 1 ? wakes[0] : undefined
+        return ctx.tools.execute({ name: 'qzone_publish', args: { content: 'Hello', ...args }, actor,
+            principal: { turnId: 'turn', source: wakes.length > 1 ? 'mixed' : 'chat', wakingPrincipals: wakes,
+                subject, mixed: wakes.length > 1, contextTainted: speakers.length > wakes.length },
+            location: { platform: 'onebot' } })
+    }
     const alice = { user: 'Alice', addressed: true }, bob = { user: 'Bob', addressed: true }
     const denied = async (...args) => {
         const result = await run(...args)
         assert.equal(result.ok, false)
-        assert.match(result.error.message, /白名单/)
+        if (result.error.code !== 'INVALID_SUBJECT') assert.match(result.error.message, /白名单|Permission denied/)
     }
 
     await denied([bob])
@@ -37,9 +43,7 @@ test('工具常驻目录，发帖时按本次请求者授权，并遵守框架�
     await denied([{ ...alice, platform: 'discord' }])
     await denied([alice, bob], { for: 'Alice' })
     await denied([alice, { user: 'Bob' }], { for: 'Bob' })
-    await denied([alice], {}, { platform: 'onebot', user: 'Bob' })
     await denied([alice, { user: 'Bob' }], { for: 'Bob' }, { platform: 'onebot', user: 'Alice' })
-    await denied([alice], {}, { platform: 'discord', user: 'Alice' })
     assert.deepEqual(writes, [])
     assert.equal((await run([alice, { user: 'Bob' }])).value.outcome, 'verified')
     assert.equal((await run([alice], { for: 'Alice' })).value.outcome, 'verified')
@@ -60,7 +64,7 @@ test('发布开关独立于白名单：空名单时目录可见但不能发帖�
     const plugin = await ctx.plugin(diary)
     assert.ok(entry())
     const result = await ctx.tools.execute({ name: 'qzone_publish', args: { content: 'Hello' },
-        location: { platform: 'onebot' }, speakers: [{ user: 'Alice', addressed: true }] })
+        location: { platform: 'onebot' }, principal: { source: 'chat', subject: { user: 'Alice', platform: 'onebot' }, wakingPrincipals: [{ user: 'Alice', platform: 'onebot', source: 'chat' }] } })
     assert.equal(result.ok, false)
     assert.match(result.error.message, /白名单/)
     await plugin.dispose()

@@ -50,15 +50,15 @@ livingdiary/
 │   ├── image.ts     # 限制图片读取大小、下载时限和取消
 │   ├── prompt-format.ts # 提示词数据块的 XML 转义
 │   ├── status.ts    # 日记和自动互动向状态命令提供的报告
-│   ├── access.ts    # 校验请求来源平台和用户 QQ 号
-│   ├── qzone/       # 获取登录态、管理 SDK 客户端及续绑
+│   ├── access.ts    # 校验请求来源平台、用户 QQ 号和本轮工具请求者
+│   ├── qzone/       # 获取登录态、管理 SDK 客户端及续绑，video-tool.ts 提供空间视频查询
 │   ├── commands/    # qzone 命令、动态和状态的展示
 │   ├── daily-digest/ # 日记调度、记忆筛选、模型决策与运行报告
 │   ├── journal/     # 日记和写作素材的持久化、查询及界面数据类型
 │   ├── webui.ts     # 注册日记查询、配置入口和前端资源
 │   ├── auto-interaction/ # 动态轮询、评论线程、媒体读取与互动决策
 │   └── publishing/  # 空间发布工具、配图读取及发布结果
-├── tests/           # 空间命令与工具、日记、自动互动和生命周期测试
+├── tests/           # 空间命令与工具（含 video-tool.test.mjs 转发验证）、日记、自动互动和生命周期测试
 ├── scripts/         # 构建 WebUI、清理编译产物与增量编译记录
 ├── package.json     # 包信息、导出入口、依赖与构建、发布脚本
 ├── tsconfig.json    # 插件的 TypeScript 配置

@@ -43,7 +43,7 @@ const account = Schema.object({
         .description('获取 QQ 空间登录态的协议。自动选择时优先使用在线的 OneBot 机器人。'),
     selfId: Schema.string().description('绑定的机器人 QQ 号；留空时自动选择在线机器人。'),
     allowUserIds: Schema.array(Schema.string()).default([])
-        .description('可使用空间命令和对话发布工具的 QQ 号；为空时无人可用。'),
+        .description('可使用空间命令和对话中的空间工具的 QQ 号；为空时无人可用。'),
     feedsDefaultLimit: Schema.number().min(1).max(10).step(1).default(5)
         .description('默认读取的空间动态条数。'),
     enablePublishTool: Schema.boolean().default(true).description('允许在对话中调用发布工具。'),

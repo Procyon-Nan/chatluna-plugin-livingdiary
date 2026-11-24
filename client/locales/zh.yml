@@ -59,7 +59,7 @@ guide.cmd.publish: qzone.publish 今天下雨了
 guide.use.publish: 发布自己的文字或图片；同一条消息最多附 9 张图。
 guide.cmd.digest: qzone.digest
 guide.use.digest: 现在写一篇日记，按当前发布设置处理。
-guide.tool: 开启 enablePublishTool 后，命令白名单里的用户也可以在对话里请机器人发说说。
+guide.tool: 白名单用户可以在对话里请机器人转发好友的空间视频。开启 enablePublishTool 后，还可以请机器人发说说。
 guide.interactions: 自动评论与回复
 guide.interactionConfig: 在「空间人设与模型」中选择空间预设和互动模型，再在「自动互动」的 interactionAllowUserIds 中加入互动对象的 QQ 号。这份名单与命令白名单分开；默认开启名单限制，名单为空时不会与任何人互动。
 guide.comments: 开启 enableFriendPostComment，机器人会考虑评论好友的新动态。interactionMonitorPostLimit 控制跟进多少条动态的评论区，设为 0 就停止跟进回复。上线时先记住现有内容，从下一次轮询起处理新增动态或评论。

@@ -58,7 +58,7 @@ guide.cmd.publish: qzone.publish It rained today
 guide.use.publish: Post your own text or images. Attach up to nine images per message.
 guide.cmd.digest: qzone.digest
 guide.use.digest: Write an entry now using the current diary publishing setting.
-guide.tool: Turn on the publishing tool (enablePublishTool) to let users in the command allowlist ask the bot to post from chat.
+guide.tool: Turn on the publishing tool (enablePublishTool) to let users in the command allowlist ask the bot to post from chat. Allowlisted users can also ask for a friend’s Qzone video in the current chat.
 guide.interactions: Automatic comments and replies
 guide.interactionConfig: Choose a Qzone preset and an interaction model (subModel), then add QQ numbers to interactionAllowUserIds. This list is independent of the command allowlist. By default the bot only interacts with people on this list, so leaving it empty prevents automatic interactions.
 guide.comments: Turn on friend comments (enableFriendPostComment) to let the bot consider commenting on new posts from friends. Set interactionMonitorPostLimit to the number of posts whose comments you want to follow, or zero to turn off replies. On startup the bot records existing activity and begins handling new posts and comments at the next check.
