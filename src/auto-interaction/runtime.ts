@@ -1,4 +1,4 @@
-import { QzoneNotFoundError, QzoneValidationError } from 'qzone-sdk'
+import { QzoneError, QzoneNotFoundError, QzoneRequestError, QzoneValidationError } from 'qzone-sdk'
 import { ModelError } from '@chatluna/ai'
 import type {
     CommentMutationResult,
@@ -88,6 +88,18 @@ const postTimestamp = (post: QzonePost, fallback: number): number => {
 }
 
 type RoundStats = { -readonly [K in keyof InteractionRoundStats]: InteractionRoundStats[K] }
+
+function readFailure(step: string, error: unknown, postId?: string): string {
+    const fields = [`${step}失败，等待下一轮重试`]
+    if (postId) fields.push(`动态：${postId}`)
+    if (error instanceof QzoneError && error.context) {
+        const { endpoint, serviceCode, statusCode } = error.context
+        if (endpoint) fields.push(`接口：${endpoint}`)
+        if (serviceCode !== undefined) fields.push(`业务码：${serviceCode}`)
+        if (statusCode !== undefined) fields.push(`HTTP ${statusCode}`)
+    }
+    return fields.join('；')
+}
 
 export class AutoInteractionRuntime {
     private currentReport: InteractionReport
@@ -190,6 +202,8 @@ export class AutoInteractionRuntime {
         this.#setReport('baselining', '正在读取已有动态和评论')
         const next = createInteractionRuntimeState()
         let selfWatermark: FeedWatermark | null = null
+        let step = '读取自身动态列表'
+        let postId: string | undefined
         try {
             const now = this.#deps.now().getTime()
             if (this.#options.monitorLimit > 0) {
@@ -197,21 +211,28 @@ export class AutoInteractionRuntime {
                     this.#options.monitorLimit
                 )
                 selfWatermark = createFeedWatermark(selfPosts, now)
+                step = '读取动态详情'
                 for (const post of selfPosts) {
-                    const detail = await this.#readListedPost(post)
-                    if (!detail) continue
-                    const monitored = createMonitoredPost(
-                        detail,
-                        'self',
-                        postTimestamp(detail, now),
-                        false
-                    )
-                    baselineMonitoredPost(monitored, detail, now)
+                    if (this.stopped) return
+                    postId = post.id
+                    const monitored = createMonitoredPost(post, 'self', postTimestamp(post, now), false)
+                    try {
+                        const detail = await this.#readListedPost(post)
+                        if (!detail) continue
+                        baselineMonitoredPost(monitored, detail, now)
+                    } catch (error) {
+                        if (this.stopped) return
+                        if (!(error instanceof QzoneRequestError) || error.context?.serviceCode === undefined ||
+                            !error.context.endpoint?.startsWith('post.detail.')) throw error
+                        this.#deps.logger.warn(`错误：${readFailure(step, error, postId)}`)
+                    }
                     next.monitoredPosts.set(monitored.key, monitored)
                 }
-                trimMonitoredPosts(next, this.#options.monitorLimit)
+                postId = undefined
             }
+            if (this.stopped) return
             if (this.#options.enableFriendPostComment) {
+                step = '读取好友动态列表'
                 const friendBaselineAt = this.#deps.now().getTime()
                 const page = await this.#deps.listFeedPage({
                     scope: 'friends',
@@ -223,6 +244,7 @@ export class AutoInteractionRuntime {
                     friendBaselineAt
                 )
             }
+            step = '读取空间账号'
             const botId = this.#deps.getAccountId()
             if (!botId) {
                 throw new Error('QQ 空间 Session 未提供当前账号 ID')
@@ -250,11 +272,12 @@ export class AutoInteractionRuntime {
             this.#friendFeedCandidateWatermark = null
             this.#lastError = null
             this.#setReport('ready', '启动基线已建立')
-        } catch {
+        } catch (error) {
             if (this.stopped) return
             this.#lastError = 'baseline'
-            this.#setReport('failed', '初始化失败，等待下一轮重试')
-            this.#deps.logger.error('错误：启动时读取已有动态和评论失败，等待下一轮重试')
+            const message = `启动时${readFailure(step, error, postId)}`
+            this.#setReport('failed', message)
+            this.#deps.logger.error(`错误：${message}`)
         }
     }
 
@@ -308,7 +331,7 @@ export class AutoInteractionRuntime {
                     if (this.#options.debug) this.#deps.logger.info('事件：目标动态不存在，已停止跟踪')
                     continue
                 }
-                this.#recordError('monitored-read', stats, '读取动态评论失败，等待下一轮重试')
+                this.#recordError('monitored-read', stats, readFailure('读取动态详情', error, monitored.post.id))
             }
         }
     }

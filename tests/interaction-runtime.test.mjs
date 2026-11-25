@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NoProviderError } from '@chatluna/ai'
-import { QzoneClient, QzoneNotFoundError, QzoneValidationError } from 'qzone-sdk'
+import { QzoneAuthError, QzoneClient, QzoneNotFoundError, QzoneRateLimitError, QzoneRequestError, QzoneValidationError } from 'qzone-sdk'
 import { AutoInteractionRuntime } from '../lib/auto-interaction/runtime.js'
 
 const epoch = Date.parse('2026-11-12T12:00:00Z')
@@ -141,7 +141,7 @@ test('正常轮询安静，调试时每轮提示一次；读取失败与没有�
         lines.length = 0
         f.deps.getPost = async () => { throw Error('network') }
         await f.runtime.runRound()
-        const failure = '错误：读取动态评论失败，等待下一轮重试'
+        const failure = '错误：读取动态详情失败，等待下一轮重试；动态：self'
         assert.deepEqual(lines, debug ? [check, failure] : [failure])
     }
 })
@@ -366,6 +366,86 @@ test('基线读取失败不提交部分水位；缺失的首个完整快照仅�
     f.self.comments.push(comment('newer'))
     await f.runtime.runRound()
     assert.deepEqual(f.replies.map(r => r.target), ['newer'])
+})
+
+test('单条详情业务错误保留监控，首次恢复只记录已有评论', async () => {
+    const f = fixture({ enableFriendPostComment: true })
+    for (let i = 0; i < 9; i++) {
+        const other = post(String(i), '100')
+        f.rows.set(other.id, other)
+        f.own.push(other)
+    }
+    const read = f.deps.getPost
+    let unavailable = true
+    f.deps.getPost = request => {
+        if (request.post === f.self && unavailable) {
+            throw new QzoneRequestError('私有响应', { context: {
+                endpoint: 'post.detail.h5', serviceCode: -20503, statusCode: 200, responseSnippet: '私有响应'
+            } })
+        }
+        return read(request)
+    }
+    const warnings = []
+    f.deps.logger.warn = message => warnings.push(message)
+    await f.runtime.runRound()
+    const { monitoredPosts, friendFeedWatermark } = f.runtime.state
+    assert.equal(f.runtime.report.phase, 'ready')
+    assert.ok(friendFeedWatermark)
+    assert.equal(monitoredPosts.size, 10)
+    const waiting = monitoredPosts.get('100:self')
+    assert.equal(waiting.post, f.self)
+    assert.equal(waiting.baselineReady, false)
+    assert.equal([...monitoredPosts.values()].filter(p => p.baselineReady).length, 9)
+    assert.deepEqual([f.decisions, f.replies, f.comments], [[], [], []])
+
+    f.own[1].comments.push(comment('healthy'))
+    await f.runtime.runRound()
+    const message = '错误：读取动态详情失败，等待下一轮重试；动态：self；接口：post.detail.h5；业务码：-20503；HTTP 200'
+    assert.deepEqual(warnings.slice(0, 2), [message, message])
+    assert.deepEqual(f.replies.map(r => r.target), ['healthy'])
+
+    unavailable = false
+    f.self.commentsComplete = false
+    f.self.comments.push(comment('backlog'))
+    await f.runtime.runRound()
+    assert.equal(waiting.baselineReady, false)
+    f.self.commentsComplete = true
+    f.deps.now = () => new Date(time(10))
+    f.self.comments.push(comment('first-complete'))
+    await f.runtime.runRound()
+    assert.equal(waiting.baselineReady, true)
+    f.self.comments.push(comment('late-history', '200', { createdAt: time(5) }),
+        comment('new', '200', { createdAt: time(11) }))
+    await f.runtime.runRound()
+    await f.runtime.runRound()
+    assert.deepEqual(f.replies.map(r => r.target), ['healthy', 'new'])
+})
+
+test('全局读取错误保留失败步骤，不提交部分启动基线', async () => {
+    const context = { endpoint: 'post.detail.h5', serviceCode: -3000 }
+    for (const [step, install] of [
+        ['读取自身动态列表', f => { f.deps.listFeedPage = async () => { throw Error('offline') } }],
+        ['读取动态详情', f => { f.deps.getPost = async () => { throw new QzoneAuthError('auth', { context }) } }],
+        ['读取动态详情', f => { f.deps.getPost = async () => { throw new QzoneRateLimitError('limit', { context }) } }],
+        ['读取动态详情', f => { f.deps.getPost = async () => { throw new QzoneRequestError('feed', { context: { endpoint: 'feed.profile', serviceCode: -1 } }) } }],
+        ['读取好友动态列表', f => {
+            const list = f.deps.listFeedPage
+            f.deps.listFeedPage = q => { if (q.scope === 'friends') throw Error('offline'); return list(q) }
+        }],
+        ['读取空间账号', f => { f.deps.getAccountId = () => null }]
+    ]) {
+        const f = fixture({ enableFriendPostComment: true })
+        const errors = []
+        f.deps.logger.error = message => errors.push(message)
+        install(f)
+        await f.runtime.runRound()
+        assert.equal(f.runtime.report.phase, 'failed')
+        assert.equal(f.runtime.report.baselineCompletedAt, null)
+        assert.equal(f.runtime.report.monitoredPosts, 0)
+        assert.equal(f.runtime.state.friendFeedWatermark, null)
+        assert.equal(errors.length, 1)
+        assert.ok(errors[0].includes(`启动时${step}失败`))
+    }
 })
 
 test('好友动态评论没有所属机器人的明确楼层时不开始跟帖', async () => {

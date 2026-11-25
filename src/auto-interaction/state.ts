@@ -24,7 +24,7 @@ export interface MonitoredPost {
     activityAt: number
     baselineReady: boolean
     botThreadRoot: CommentReference | null
-    /** 启动基线截止时间；晚到但不晚于该时刻的有时间节点仍视为历史。 */
+    /** 启动评论基线的截止时间；延后取得完整详情时，以恢复时刻为准。 */
     ignoreCommentsThrough: number | null
     /** 首个基线后完整快照中，无时间节点也按历史处理；完成后解除。 */
     baselineObservationPending: boolean
@@ -148,7 +148,7 @@ export function baselineMonitoredPost(
         monitored.seenComments.add(commentKey(detail, comment))
     }
     monitored.baselineReady = true
-    monitored.ignoreCommentsThrough = null
+    if (monitored.baselineObservationPending) monitored.ignoreCommentsThrough = detectedAt
     monitored.baselineObservationPending = false
     monitored.activityAt = Math.max(
         monitored.activityAt,
