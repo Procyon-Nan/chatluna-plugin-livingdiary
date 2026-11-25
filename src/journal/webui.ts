@@ -29,7 +29,7 @@ declare module '@chatluna/ui-client/client' {
         'livingdiary.entries': DiaryPage
         'livingdiary.dates': string[]
         'livingdiary.memories': DiaryMemory[]
-        'livingdiary.settingsEntry': { id: string; name: string } | null
+        'livingdiary.settingsEntry': { id: string } | null
     }
 }
 

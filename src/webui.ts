@@ -25,7 +25,7 @@ export function registerWebUI(ctx: Context, owner: Context, journal: DiaryJourna
     ui.state('livingdiary.settingsEntry', {
         get: () => {
             const entry = owner.fiber.entry
-            return entry ? { id: entry.id, name: entry.options.name } : null
+            return entry ? { id: entry.id } : null
         }
     })
     ui.state('livingdiary.presets', {

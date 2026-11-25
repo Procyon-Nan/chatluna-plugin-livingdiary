@@ -8,15 +8,15 @@ export function Settings() {
     const t = useTranslate('livingdiary')
     const entry = useLive('livingdiary.settingsEntry')
     if (entry.error) return <Alert variant="destructive">{entry.error}</Alert>
-    if (entry.data) return <InstanceForm key={entry.data.id} {...entry.data} />
+    if (entry.data) return <InstanceForm key={entry.data.id} id={entry.data.id} />
     if (entry.status === 'ready') return <Alert>{t('settings.noEntry')}</Alert>
     return <Skeleton className="h-32 w-full" />
 }
 
-function InstanceForm({ id, name }: { id: string; name: string }) {
+function InstanceForm({ id }: { id: string }) {
     const t = useTranslate('livingdiary')
-    const locale = useLocale()
-    const runtime = useLive('plugins.runtime', { name, locale: locale.active.startsWith('zh') ? 'zh' : 'en' })
+    const { active: locale } = useLocale()
+    const runtime = useLive('plugins.runtime', { id, locale })
     const document = useLive('plugins.document', { id })
     const validation = useFormValidation()
     const [draft, setDraft] = React.useState<{ base: PluginDocument; values: PluginDocument['values'] }>()
