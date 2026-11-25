@@ -129,6 +129,33 @@ test('自己空间只监控真实 SDK 当前账号的个人主页；混入别人
     assert.deepEqual(requests, Array(2).fill(['/mqzone/profile', '100']))
 })
 
+test('启动监控读取相册视频详情；缺少评论快照时保留视频并等待完整基线', async t => {
+    const f = fixture()
+    const id = { cellid: 'album-post' }, userinfo = { user: { uin: 100 } }, comm = { appid: 4 }
+    const video = { videoid: 'clip', videourl: 'https://video.qq.com/detail.mp4' }
+    const listed = { id, userinfo, comm, operation: { busi_param: { 1: 'clip' } } }
+    const requests = []
+    const client = new QzoneClient({ session: { cookies: 'uin=o100; p_skey=test' }, fetch: async url => {
+        const { pathname } = new URL(url)
+        requests.push(pathname)
+        if (pathname === '/mqzone/profile') {
+            const page = JSON.stringify([null, { data: { vFeeds: [listed] } }])
+            return new Response(`<script>window.shine0callback=function(){return "ab"};var FrontPage={data:${page}};</script>`)
+        }
+        return Response.json({ data: { cell_id: id, cell_userinfo: userinfo, cell_comm: comm, cell_video: video } })
+    } })
+    t.after(() => client.close())
+    f.deps.listFeedPage = query => client.listFeeds({ ...query, scope: 'profile', userId: '100' })
+    f.deps.getPost = query => client.getPost(query)
+    await f.runtime.runRound()
+    assert.deepEqual(requests, ['/mqzone/profile', '/webapp/json/mqzone_detail/photo'])
+    assert.equal(f.runtime.report.phase, 'ready')
+    const monitored = f.runtime.state.monitoredPosts.get('100:album-post')
+    assert.equal(monitored.post.media[0].url, video.videourl)
+    assert.equal(monitored.baselineReady, false)
+    assert.equal(f.decisions.length, 0)
+})
+
 test('正常轮询安静，调试时每轮提示一次；读取失败与没有评论分别处理', async () => {
     for (const debug of [false, true]) {
         const f = fixture({ debug })
