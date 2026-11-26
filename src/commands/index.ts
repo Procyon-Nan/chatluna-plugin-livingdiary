@@ -7,6 +7,7 @@ import { publishPost, readableError } from '../publishing/publish.js'
 import type { QzoneService } from '../qzone/service.js'
 import type { RuntimeReports } from '../status.js'
 import { formatFeedList, formatStatus } from './format.js'
+import { createDeleteCommand } from './delete.js'
 
 export function clampFeedCount(
     count: number | undefined,
@@ -46,10 +47,11 @@ export function extractPublishParts(elements: readonly h[]): PublishParts {
     return { content, imageUrls, videoUrls }
 }
 
-export function registerCommands(ctx: Context, config: Config, service: QzoneService, reports: RuntimeReports): void {
+export function registerCommands(ctx: Context, config: Config, service: QzoneService, reports: RuntimeReports, stopping: AbortSignal): void {
+    const deleteCommand = createDeleteCommand(service, stopping)
     const owner = 'livingdiary'
     const denial = '未授权：你的账号不在 allowUserIds 白名单中。'
-    const usage = '子指令：qzone.feeds 读取动态；qzone.publish 发布动态（可附图片和 MP4 视频）；qzone.status 查看状态；qzone.digest 根据今天的记忆写日记（需 LivingMemory 和模型服务）。'
+    const usage = '子指令：qzone.feeds 读取动态；qzone.publish 发布动态（可附图片和 MP4 视频）；qzone.delete 删除自己的动态；qzone.status 查看状态；qzone.digest 根据今天的记忆写日记（需 LivingMemory 和模型服务）。'
 
     ctx.command('qzone', 'QQ 空间生活日记', { owner }).usage(usage).action(() => usage)
     ctx.command('qzone.feeds [count:posint]', '读取 QQ 空间动态', { owner })
@@ -62,7 +64,7 @@ export function registerCommands(ctx: Context, config: Config, service: QzoneSer
                 const page = target
                     ? await service.listFeedPage({ scope: 'profile', userId: target, limit })
                     : await service.listFeedPage({ scope: 'self', limit })
-                return h.escape(formatFeedList(page.items))
+                return h.escape(formatFeedList(page.items, !target))
             } catch (error) {
                 ctx.logger.warn('错误：读取空间动态失败')
                 return h.escape(readableError(error, '读取动态失败'))
@@ -74,6 +76,12 @@ export function registerCommands(ctx: Context, config: Config, service: QzoneSer
             const parts = extractPublishParts(content ?? [])
             const result = await publishPost(ctx, service, { content: parts.content, images: parts.imageUrls, videos: parts.videoUrls })
             return h.escape(result.message)
+        })
+    ctx.command('qzone.delete [id:string]', '删除机器人自己的 QQ 空间动态', { owner, checkUnknown: true, checkArgCount: true })
+        .option('recent', '--recent <数量:posint> 预览最近 1–10 条动态并确认删除')
+        .action(async ({ session, options }, id) => {
+            if (!session || !isUserAllowed(session.userId, config.allowUserIds, session.platform)) return denial
+            return h.escape(await deleteCommand({ id, recent: options?.recent }, session))
         })
     ctx.command('qzone.status', '查看 QQ 空间登录态', { owner })
         .action(({ session }) => isUserAllowed(session?.userId, config.allowUserIds, session?.platform)

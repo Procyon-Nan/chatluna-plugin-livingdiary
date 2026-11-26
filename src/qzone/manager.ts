@@ -32,7 +32,8 @@ export interface QzoneManagerStatus {
     readonly rebind: RebindStats
 }
 
-export type QzoneWriteOperation = 'comment' | 'reply'
+const writeLabels = { comment: '评论动态', reply: '回复评论', delete: '删除动态' } as const
+export type QzoneWriteOperation = keyof typeof writeLabels
 
 /** 写操作登录态失效：已按策略尝试续绑，但绝不自动重放。 */
 export class QzoneWriteAuthError extends Error {
@@ -40,15 +41,7 @@ export class QzoneWriteAuthError extends Error {
     readonly rebound: boolean
 
     constructor(operation: QzoneWriteOperation, rebound: boolean) {
-        const labels: Record<QzoneWriteOperation, string> = {
-            comment: '评论动态',
-            reply: '回复评论'
-        }
-        super(
-            rebound
-                ? `${labels[operation]}时登录态失效，续绑已完成`
-                : `${labels[operation]}时登录态失效，续绑不可用`
-        )
+        super(`${writeLabels[operation]}时登录态失效，${rebound ? '续绑已完成' : '续绑不可用'}`)
         this.name = 'QzoneWriteAuthError'
         this.operation = operation
         this.rebound = rebound
@@ -131,16 +124,25 @@ export class QzoneManager {
         }
     }
 
+    deleteOwnPost(target: string | QzonePost, signal: AbortSignal): Promise<PostMutationResult> {
+        return this.#runWrite('delete', signal, client => {
+            const accountId = client.getSessionInfo().accountId
+            if (!accountId) throw new Error('空间登录态缺少绑定账号。')
+            const post = typeof target === 'string' ? { id: target, authorId: accountId } : target
+            return client.deleteOwnPost({ post, signal })
+        })
+    }
+
     /** 评论动态；登录态失效时仅触发续绑，不自动重放。 */
     comment(request: CommentOptions): Promise<CommentMutationResult> {
-        return this.#runWrite('comment', '评论动态', request.signal, (client) =>
+        return this.#runWrite('comment', request.signal, (client) =>
             client.comment(request)
         )
     }
 
     /** 回复评论；登录态失效时仅触发续绑，不自动重放。 */
     reply(request: ReplyOptions): Promise<CommentMutationResult> {
-        return this.#runWrite('reply', '回复评论', request.signal, (client) =>
+        return this.#runWrite('reply', request.signal, (client) =>
             client.reply(request)
         )
     }
@@ -214,7 +216,6 @@ export class QzoneManager {
 
     async #runWrite<T>(
         kind: QzoneWriteOperation,
-        phase: string,
         signal: AbortSignal | undefined,
         operation: (client: QzoneClient) => Promise<T>
     ): Promise<T> {
@@ -226,7 +227,7 @@ export class QzoneManager {
         } catch (error) {
             if (error instanceof QzoneAuthError) {
                 signal?.throwIfAborted()
-                const rebound = await this.#tryRebind(client, phase)
+                const rebound = await this.#tryRebind(client, writeLabels[kind])
                 throw new QzoneWriteAuthError(kind, rebound)
             }
             throw error

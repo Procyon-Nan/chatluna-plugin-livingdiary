@@ -57,6 +57,8 @@ guide.cmd.feeds: qzone.feeds 3
 guide.use.feeds: 读取机器人最近三条动态；分享动态会列出卡片标题、摘要和完整链接。
 guide.cmd.publish: qzone.publish 今天下雨了
 guide.use.publish: 发布正文、图片和 MP4 视频；同一条消息最多附 9 张图，也可以只发素材。图片每张最多 32 MiB，视频每段最多 128 MiB。
+guide.cmd.delete: qzone.delete <动态ID> / qzone.delete --recent 3
+guide.use.delete: 白名单用户可用指令或对话工具 qzone_delete 删除机器人的动态。自身列表显示 ID；工具按 ID 或最近 1–10 条直接删除。仅 qzone.delete --recent 指令需要本人在原会话 60 秒内回复「确认删除」或「取消」。本地日记保留。
 guide.cmd.digest: qzone.digest
 guide.use.digest: 现在写一篇日记，按当前发布设置处理。
 guide.feedTool: 白名单用户可查看机器人、好友动态流或指定 QQ 的主页，每页 1–10 条。查看后可以说「看第二张图」「看看视频原片」或「只看封面」。由支持对应输入的对话模型或 @vision 读取所选文件。关闭发布工具后仍可查看。

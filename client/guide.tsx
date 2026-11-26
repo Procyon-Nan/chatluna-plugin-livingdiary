@@ -61,7 +61,7 @@ export function Guide({ openSettings }: { openSettings(): void }) {
                             {key === 'commands' && (
                                 <>
                                     <dl className="mt-5 grid gap-x-4 gap-y-2 leading-7 sm:grid-cols-[auto_1fr]">
-                                        {(['status', 'feeds', 'publish', 'digest'] as const).map(command => (
+                                        {(['status', 'feeds', 'publish', 'delete', 'digest'] as const).map(command => (
                                             <div key={command} className="sm:contents">
                                                 <dt><code className="rounded bg-muted px-1.5 py-0.5 text-sm">{t(`guide.cmd.${command}`)}</code></dt>
                                                 <dd>{t(`guide.use.${command}`)}</dd>

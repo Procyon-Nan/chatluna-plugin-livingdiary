@@ -56,6 +56,8 @@ guide.cmd.feeds: qzone.feeds 3
 guide.use.feeds: Read the bot’s three latest posts, including share card titles, summaries and full links.
 guide.cmd.publish: qzone.publish It rained today
 guide.use.publish: Publish text, images and MP4 videos in one post, or media alone. Up to nine images, each limited to 32 MiB; each video is limited to 128 MiB.
+guide.cmd.delete: qzone.delete <post ID> / qzone.delete --recent 3
+guide.use.delete: Allowlisted users can delete the bot’s posts by command or via qzone_delete in chat. The bot’s feed shows post IDs. The tool deletes an exact ID or the latest 1–10 posts directly. Only the qzone.delete --recent command asks you to review the list and reply 确认删除 or 取消 in the same chat within 60 seconds. Local diary entries are retained.
 guide.cmd.digest: qzone.digest
 guide.use.digest: Write an entry now using the current diary publishing setting.
 guide.feedTool: Allowlisted users can browse the bot’s posts, its friends feed, or a QQ profile, 1–10 posts per page. Ask to see the second photo, watch a video, or inspect just its cover. The chat model or @vision must support the selected file type. Viewing also works when publishing is disabled.

@@ -29,7 +29,7 @@ test('私聊和群聊命令都检查平台和 QQ 号，同号其他平台及无�
         [[], session]
     ]) {
         const actions = commands(inaccessible, allow)
-        for (const name of ['qzone.publish', 'qzone.status', 'qzone.feeds']) {
+        for (const name of ['qzone.publish', 'qzone.status', 'qzone.feeds', 'qzone.delete']) {
             assert.match(await actions.get(name)({ session: user }), /未授权/)
         }
     }
@@ -39,11 +39,11 @@ test('feeds 默认读自己的空间，可以指定目标 QQ，查询限定十�
     const requests = []
     const listFeedPage = async query => {
         requests.push(query)
-        return { items: [{ createdAt: null, author: { nickname: '用户' }, content: '动态正文', likeCount: 2, commentCount: 1, liked: false }] }
+        return { items: [{ id: 'post-123', createdAt: null, author: { nickname: '用户' }, content: '动态正文', likeCount: 2, commentCount: 1, liked: false }] }
     }
     const feeds = commands({ listFeedPage }).get('qzone.feeds')
-    assert.match(await feeds({ session }), /用户：动态正文/)
-    await feeds({ session: { ...session, platform: 'milky' }, options: { target: '123' } }, 999)
+    assert.match(await feeds({ session }), /用户：动态正文[\s\S]*动态 ID：post-123/)
+    assert.doesNotMatch(await feeds({ session: { ...session, platform: 'milky' }, options: { target: '123' } }, 999), /动态 ID：/)
     assert.deepEqual(requests, [{ scope: 'self', limit: 5 }, { scope: 'profile', userId: '123', limit: 10 }])
 })
 
@@ -62,7 +62,7 @@ test('分享卡片单独展示标题、摘要和完整链接，空字段省略�
     const url = 'https://example.invalid/watch?id=' + 'x'.repeat(150) + '&from=qzone'
     for (const content of ['', '我的配文']) {
         const feeds = commands({ listFeedPage: async () => ({ items: [{
-            createdAt: null, author: { nickname: '好友' }, content, likeCount: 2, commentCount: 1,
+        id: 'share', createdAt: null, author: { nickname: '好友' }, content, likeCount: 2, commentCount: 1,
             share: { title: '<at type="all"/>', summary: '摘要'.repeat(60), url, previewUrl: 'https://m.qpic.cn/cover' }
         }] }) }).get('qzone.feeds')
         const elements = h.normalize(await feeds({ session }))
@@ -75,7 +75,7 @@ test('分享卡片单独展示标题、摘要和完整链接，空字段省略�
         assert.ok(!text.includes('qpic.cn'))
     }
     const feeds = commands({ listFeedPage: async () => ({ items: [{
-        createdAt: null, author: { nickname: '好友' }, content: '', likeCount: 0, commentCount: 0,
+        id: 'share', createdAt: null, author: { nickname: '好友' }, content: '', likeCount: 0, commentCount: 0,
         share: { title: '', summary: '', url }
     }] }) }).get('qzone.feeds')
     const text = await feeds({ session })

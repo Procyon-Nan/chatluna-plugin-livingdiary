@@ -25,7 +25,7 @@ export function formatTime(value: string | number | null): string {
 const formatEpochSeconds = (value: number | null): string =>
     formatTime(value === null ? null : value * 1000)
 
-export function formatFeedList(items: readonly QzonePost[]): string {
+export function formatFeedList(items: readonly QzonePost[], showId = false): string {
     if (items.length === 0) return '暂无动态。'
     return items
         .map((post, index) => {
@@ -36,6 +36,7 @@ export function formatFeedList(items: readonly QzonePost[]): string {
                 `（赞 ${post.likeCount}・评论 ${post.commentCount}${liked}）`
             )
             const lines = [line]
+            if (showId) lines.push(`动态 ID：${post.id}`)
             if (post.share?.title) lines.push(`分享：${sliceContent(post.share.title)}`)
             if (post.share?.summary) lines.push(`摘要：${sliceContent(post.share.summary)}`)
             if (post.share?.url) lines.push(`链接：${post.share.url}`)

@@ -78,6 +78,7 @@ test('关闭发布后，插件仍注册前台只读动态工具', async t => {
     assert.equal(feed.traits.effect, 'read')
     assert.equal(feed.traits.background, false)
     assert.equal(definitions.find(tool => tool.name === 'qzone_read_media').traits.effect, 'read')
+    assert.equal(definitions.find(tool => tool.name === 'qzone_delete').traits.effect, 'write')
     assert.ok(!definitions.some(tool => tool.name === 'qzone_publish'))
 })
 

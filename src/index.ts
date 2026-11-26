@@ -2,6 +2,7 @@ import type { Context } from 'cordis'
 import type { Config } from './config.js'
 import { registerPersonaSelector } from './config.js'
 import { registerCommands } from './commands/index.js'
+import { registerDeleteTool } from './qzone/delete-tool.js'
 import { registerDailyDigest } from './daily-digest/index.js'
 import { registerAutoInteraction } from './auto-interaction/index.js'
 import type { RuntimeReports } from './status.js'
@@ -19,14 +20,15 @@ export const inject = ['satori'] as const
 
 export function apply(ctx: Context, config: Config) {
     const qzone = createQzoneService(ctx, config)
-    ctx.effect(() => () => qzone.close())
+    const stopping = new AbortController()
+    ctx.effect(() => () => { stopping.abort(); return qzone.close() })
     const reports: RuntimeReports = { digest: null, interaction: null }
     ctx.inject(['schemas', 'presets'], registerPersonaSelector)
 
     ctx.plugin({
         name: 'livingdiary-commands',
         inject: ['koishi'],
-        apply: ctx => registerCommands(ctx, config, qzone, reports)
+        apply: ctx => registerCommands(ctx, config, qzone, reports, stopping.signal)
     })
     ctx.inject(['model', 'database'], scope => {
         const journal = createDiaryJournal(scope)
@@ -44,6 +46,7 @@ export function apply(ctx: Context, config: Config) {
     })
     ctx.inject(['tools'], scope => {
         registerFeedTool(scope, config, qzone)
+        registerDeleteTool(scope, config, qzone, stopping.signal)
         if (config.enablePublishTool) registerPublishTool(scope, config, qzone)
     })
 }
