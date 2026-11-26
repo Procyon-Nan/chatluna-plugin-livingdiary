@@ -1,13 +1,12 @@
 import type { Context } from 'cordis'
 import type {} from '@chatluna/ai-runtime'
 import type { ChatBlock, ChatFileBlock } from '@chatluna/ai'
-import type {} from '@chatluna/storage-files'
 import type { QzoneMedia, QzoneShareCard } from 'qzone-sdk'
-import { downloadMediaBytes, MediaReadError, type MediaReadPolicy } from '../media.js'
+import { MediaReadError } from '../media.js'
+import { asFile, downloadImage, isQzoneImageUrl } from '../qzone/media-file.js'
 import { callModel } from '../model.js'
 import { previewGif } from './gif.js'
 
-const maxImageBytes = 15 * 1024 * 1024
 const maxTotalBytes = 45 * 1024 * 1024
 const visionRole = '@vision'
 
@@ -29,41 +28,7 @@ function metadata(media: QzoneMedia, id: string) {
     return fields.join(' ')
 }
 
-function isQzoneImageUrl(url: URL) {
-    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password || url.port) return false
-    // QQ 空间照片列表使用 photo.store.qq.com，详情与缩略图使用 qpic.cn。
-    return ['qpic.cn', 'photo.store.qq.com'].some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))
-}
-
-async function download(url: URL, policy: MediaReadPolicy, signal: AbortSignal) {
-    const bytes = await downloadMediaBytes(url, 'image', maxImageBytes, signal, policy)
-    const head = bytes.subarray(0, 12)
-    let mime: string
-    if (head.subarray(0, 3).toString('hex') === 'ffd8ff') mime = 'image/jpeg'
-    else if (head.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') mime = 'image/png'
-    else if (['GIF87a', 'GIF89a'].includes(head.toString('ascii', 0, 6))) mime = 'image/gif'
-    else if (head.toString('ascii', 0, 4) === 'RIFF' && head.toString('ascii', 8, 12) === 'WEBP') mime = 'image/webp'
-    else throw new MediaReadError('图片格式不受支持。')
-    return { bytes, mime }
-}
-
-async function asFile(ctx: Context, id: string, bytes: Buffer, mime: string, signal: AbortSignal): Promise<ChatFileBlock> {
-    const filename = `${id}.${mime === 'image/jpeg' ? 'jpg' : mime.slice(6)}`
-    const file = { type: 'file' as const, filename, mediaType: mime, fileSize: bytes.length }
-    const storage = ctx.get('chatluna_storage')
-    if (storage) {
-        try {
-            const stored = await storage.createTempFile(bytes, filename, { mimeType: mime, expireHours: 1 })
-            signal.throwIfAborted()
-            return { ...file, data: { type: 'reference', reference: `storage://${stored.id}` } }
-        } catch {
-            signal.throwIfAborted()
-        }
-    }
-    return { ...file, data: { type: 'data', data: bytes.toString('base64') } }
-}
-
-type Download = Awaited<ReturnType<typeof download>>
+type Download = Awaited<ReturnType<typeof downloadImage>>
 
 /** 只在当前动态内用 M 编号读取图片；给模型的内容不携带 QQ 下载地址。 */
 export async function prepareInteractionMedia(ctx: Context, media: readonly QzoneMedia[], model: string,
@@ -111,7 +76,7 @@ export async function prepareInteractionMedia(ctx: Context, media: readonly Qzon
             lines.push(`${description} status=unresolved:unsupported-image-host`)
             continue
         }
-        const load = () => download(url, policy, signal)
+        const load = () => downloadImage(url, signal, policy)
         let downloaded: Download | undefined
         if (direct) {
             try {

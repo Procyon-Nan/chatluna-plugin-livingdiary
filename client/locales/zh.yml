@@ -59,7 +59,7 @@ guide.cmd.publish: qzone.publish 今天下雨了
 guide.use.publish: 发布正文、图片和 MP4 视频；同一条消息最多附 9 张图，也可以只发素材。图片每张最多 32 MiB，视频每段最多 128 MiB。
 guide.cmd.digest: qzone.digest
 guide.use.digest: 现在写一篇日记，按当前发布设置处理。
-guide.feedTool: 白名单用户可以说「看看你自己的动态」「看看好友动态」或指定 QQ 号查看主页。好友动态按空间返回顺序展示；可以指定 1–10 条，或说「下一页」继续查看。关闭发布工具后仍可查看。
+guide.feedTool: 白名单用户可查看机器人、好友动态流或指定 QQ 的主页，每页 1–10 条。查看后可以说「看第二张图」「看看视频原片」或「只看封面」。由支持对应输入的对话模型或 @vision 读取所选文件。关闭发布工具后仍可查看。
 guide.tool: 开启 enablePublishTool 后，白名单用户可以在对话中发送图片和 MP4 视频，再说「把这些发到空间，自己配文字」，机器人会将正文与所选原文件一起发布为一条动态。
 guide.interactions: 自动评论与回复
 guide.interactionConfig: 在「空间人设与模型」中选择空间预设和互动模型，再在「自动互动」的 interactionAllowUserIds 中加入互动对象的 QQ 号。这份名单与命令白名单分开；默认开启名单限制，名单为空时不会与任何人互动。分享卡片的标题、摘要和链接会提供给模型，封面使用互动模型或 @vision 的看图能力，与配图共用每次互动九张、单张 15 MiB、合计 45 MiB 的限额。

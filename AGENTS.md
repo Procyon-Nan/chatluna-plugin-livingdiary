@@ -51,7 +51,7 @@ livingdiary/
 │   ├── prompt-format.ts # 提示词数据块的 XML 转义
 │   ├── status.ts    # 日记和自动互动向状态命令提供的报告
 │   ├── access.ts    # 校验请求来源平台、用户 QQ 号和本轮工具请求者
-│   ├── qzone/       # 获取登录态、管理 SDK 客户端及续绑，feed-tool.ts 提供动态列表查询
+│   ├── qzone/       # 空间登录态与 SDK 客户端；feed-tool.ts 查询列表，feed-media.ts 按编号读媒体，media-file.ts 读取媒体并封装模型文件
 │   ├── commands/    # qzone 命令、动态及分享卡片和状态的展示
 │   ├── daily-digest/ # 日记调度、记忆筛选、模型决策与运行报告
 │   ├── journal/     # 日记和写作素材的持久化、查询及界面数据类型

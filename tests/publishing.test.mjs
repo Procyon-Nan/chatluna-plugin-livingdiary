@@ -284,7 +284,7 @@ test('工具常驻目录，发帖时按本次请求者授权，并遵守框架�
     t.after(() => ctx.fiber.dispose())
     await ctx.plugin(Permissions, { rules: [] })
     await ctx.plugin(Tools)
-    ctx.permissions.asker(() => 'once')
+    ctx.permissions.asker(question => ({ answer: 'once', by: question.approver.user, actor: question.approver }))
     const writes = []
     const plugin = await ctx.plugin({ inject: ['tools'], apply(scope) {
         registerPublishTool(scope, { allowUserIds: ['Alice'] }, {
@@ -297,7 +297,7 @@ test('工具常驻目录，发帖时按本次请求者授权，并遵守框架�
         const wakes = speakers.filter(s => s.addressed).map(s => ({ platform: 'onebot', source: 'chat', ...s }))
         const subject = wakes.length === 1 ? wakes[0] : undefined
         return ctx.tools.execute({ name: 'qzone_publish', args: { content: 'Hello', ...args }, actor,
-            principal: { turnId: 'turn', source: wakes.length > 1 ? 'mixed' : 'chat', wakingPrincipals: wakes,
+            principal: { turnId: 'turn', routeId: 'onebot:test', source: wakes.length > 1 ? 'mixed' : 'chat', wakingPrincipals: wakes,
                 subject, mixed: wakes.length > 1, contextTainted: speakers.length > wakes.length },
             location: { platform: 'onebot' } })
     }
@@ -305,7 +305,7 @@ test('工具常驻目录，发帖时按本次请求者授权，并遵守框架�
     const denied = async (...args) => {
         const result = await run(...args)
         assert.equal(result.ok, false)
-        if (result.error.code !== 'INVALID_SUBJECT') assert.match(result.error.message, /白名单|Permission denied/)
+        if (!['INVALID_SUBJECT', 'PERMISSION_DENIED'].includes(result.error.code)) assert.match(result.error.message, /白名单/)
     }
 
     await denied([bob])

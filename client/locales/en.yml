@@ -58,7 +58,7 @@ guide.cmd.publish: qzone.publish It rained today
 guide.use.publish: Publish text, images and MP4 videos in one post, or media alone. Up to nine images, each limited to 32 MiB; each video is limited to 128 MiB.
 guide.cmd.digest: qzone.digest
 guide.use.digest: Write an entry now using the current diary publishing setting.
-guide.feedTool: Allowlisted users can ask for the bot’s posts, its friends feed in Qzone order, or posts from a specific QQ number. Ask for 1–10 posts or say “next page” to continue. Viewing is available even when publishing is disabled.
+guide.feedTool: Allowlisted users can browse the bot’s posts, its friends feed, or a QQ profile, 1–10 posts per page. Ask to see the second photo, watch a video, or inspect just its cover. The chat model or @vision must support the selected file type. Viewing also works when publishing is disabled.
 guide.tool: With enablePublishTool enabled, allowlisted users can send images and MP4 videos in chat and ask the bot to write a caption and publish the selected files together in one Qzone post.
 guide.interactions: Automatic comments and replies
 guide.interactionConfig: Choose a Qzone preset and an interaction model (subModel), then add QQ numbers to interactionAllowUserIds. This list is independent of the command allowlist. By default the bot only interacts with people on this list, so leaving it empty prevents automatic interactions. The model receives share card titles, summaries and links. Covers use the interaction model or @vision for image reading, sharing the limits of nine images per interaction, 15 MiB per image and 45 MiB in total.
