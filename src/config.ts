@@ -30,6 +30,7 @@ export interface Config {
 }
 
 const personaSelector = 'livingdiary-persona'
+export const FEEDS_LIMIT_MAX = 10
 
 export function registerPersonaSelector(ctx: Context) {
     ctx.schemas.define(personaSelector, () => Schema.union(ctx.presets.list()
@@ -44,7 +45,7 @@ const account = Schema.object({
     selfId: Schema.string().description('绑定的机器人 QQ 号；留空时自动选择在线机器人。'),
     allowUserIds: Schema.array(Schema.string()).default([])
         .description('可使用空间命令和对话中的空间工具的 QQ 号；为空时无人可用。'),
-    feedsDefaultLimit: Schema.number().min(1).max(10).step(1).default(5)
+    feedsDefaultLimit: Schema.natural().min(1).max(FEEDS_LIMIT_MAX).default(5)
         .description('默认读取的空间动态条数。'),
     enablePublishTool: Schema.boolean().default(true).description('允许在对话中调用发布工具。'),
     rebindMinIntervalSeconds: Schema.number().min(0).default(60).description('两次续绑的最短间隔（秒）。'),

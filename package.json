@@ -46,7 +46,6 @@
         "schemastery": "^3.18.0"
     },
     "peerDependencies": {
-        "@chatluna/chat": "*",
         "@chatluna/agent": "*",
         "@chatluna/ai": "*",
         "@chatluna/ai-runtime": "*",
@@ -63,9 +62,6 @@
         "cordis": "^4.0.0-rc.12"
     },
     "peerDependenciesMeta": {
-        "@chatluna/chat": {
-            "optional": true
-        },
         "chatluna-plugin-livingmemory": {
             "optional": true
         }
@@ -88,7 +84,6 @@
         "@types/react": "^19.2.0",
         "cordis": "^4.0.0-rc.12",
         "koishi": "npm:@koishijs/core@4.18.11",
-        "koishi-plugin-adapter-onebot": "^6.9.5",
         "react": "^19.2.0",
         "typescript": "*",
         "vite": "^8.2.1"

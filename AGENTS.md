@@ -43,7 +43,7 @@ LivingDiary 是 ChatLuna v2 的 QQ 空间插件，npm 包名为 `chatluna-plugin
 livingdiary/
 ├── client/          # WebUI 日记本、插件配置与使用指南
 ├── src/
-│   ├── index.ts     # 装配空间客户端、命令、发布工具、日记与自动互动
+│   ├── index.ts     # 装配空间客户端、命令、对话工具、日记与自动互动
 │   ├── config.ts    # 账号、模型、日记、互动及各自的授权设置
 │   ├── persona.ts   # 为自动评论与回复渲染空间预设的人设
 │   ├── model.ts     # 随后台任务取消单步模型调用
@@ -51,14 +51,14 @@ livingdiary/
 │   ├── prompt-format.ts # 提示词数据块的 XML 转义
 │   ├── status.ts    # 日记和自动互动向状态命令提供的报告
 │   ├── access.ts    # 校验请求来源平台、用户 QQ 号和本轮工具请求者
-│   ├── qzone/       # 获取登录态、管理 SDK 客户端及续绑，video-tool.ts 提供空间视频查询
+│   ├── qzone/       # 获取登录态、管理 SDK 客户端及续绑，feed-tool.ts 提供动态列表查询
 │   ├── commands/    # qzone 命令、动态及分享卡片和状态的展示
 │   ├── daily-digest/ # 日记调度、记忆筛选、模型决策与运行报告
 │   ├── journal/     # 日记和写作素材的持久化、查询及界面数据类型
 │   ├── webui.ts     # 注册日记查询、配置入口和前端资源
 │   ├── auto-interaction/ # 动态轮询、评论线程、分享卡片与封面读取及互动决策
 │   └── publishing/  # 空间发布工具、图片和视频附件读取及发布结果
-├── tests/           # 空间命令与工具（含 video-tool.test.mjs 转发验证）、日记、自动互动和生命周期测试
+├── tests/           # 空间命令、动态查询与发布工具、日记、自动互动和生命周期测试
 ├── scripts/         # 构建 WebUI、清理编译产物与增量编译记录
 ├── package.json     # 包信息、导出入口、依赖与构建、发布脚本
 ├── tsconfig.json    # 插件的 TypeScript 配置

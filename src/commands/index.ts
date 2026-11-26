@@ -1,14 +1,12 @@
 import type { Context } from 'cordis'
 import { h } from '@satorijs/core'
 import type {} from 'koishi'
-import type { Config } from '../config.js'
+import { FEEDS_LIMIT_MAX, type Config } from '../config.js'
 import { isUserAllowed } from '../access.js'
 import { publishPost, readableError } from '../publishing/publish.js'
 import type { QzoneService } from '../qzone/service.js'
 import type { RuntimeReports } from '../status.js'
 import { formatFeedList, formatStatus } from './format.js'
-
-export const FEEDS_LIMIT_MAX = 10
 
 export function clampFeedCount(
     count: number | undefined,

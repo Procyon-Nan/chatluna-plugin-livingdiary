@@ -68,7 +68,8 @@ export function Guide({ openSettings }: { openSettings(): void }) {
                                             </div>
                                         ))}
                                     </dl>
-                                    <p className="mt-5 leading-7">{t('guide.tool')}</p>
+                                    <p className="mt-5 leading-7">{t('guide.feedTool')}</p>
+                                    <p className="mt-2 leading-7">{t('guide.tool')}</p>
                                 </>
                             )}
                         </section>

@@ -49,7 +49,7 @@ guide.diary: Write your first diary entry
 guide.configureDiary: Enable LivingMemory, then choose a Qzone preset and a diary model (mainModel). The diary uses the preset’s persona card from LivingMemory and its active memories created today. If no card is saved, it uses the preset’s system text.
 guide.schedule: Scheduled writing is on by default. It starts at 23:50 server time and uses up to 100 recent memories. You can run qzone.digest even with the schedule off. No entry is written if there is no material or if the model decides to skip.
 guide.read: Every entry is saved in the journal. Entries are also posted to Qzone by default. Turn off publishDiaryToQzone to keep them in the journal only. Browse by preset and date to see the text on the left and its reference memories on the right.
-guide.commands: Commands and posting from chat
+guide.commands: Qzone commands and chat tools
 guide.cmd.status: qzone.status
 guide.use.status: Check the login state, latest diary result and interaction status.
 guide.cmd.feeds: qzone.feeds 3
@@ -58,7 +58,8 @@ guide.cmd.publish: qzone.publish It rained today
 guide.use.publish: Publish text, images and MP4 videos in one post, or media alone. Up to nine images, each limited to 32 MiB; each video is limited to 128 MiB.
 guide.cmd.digest: qzone.digest
 guide.use.digest: Write an entry now using the current diary publishing setting.
-guide.tool: Allowlisted users can ask for a friend's Qzone video in the current chat. Enable the publishing tool (enablePublishTool), send images and MP4 videos, then ask the bot to write a caption and publish them together. The tool uploads the selected original files in one post.
+guide.feedTool: Allowlisted users can ask for the bot’s posts, its friends feed in Qzone order, or posts from a specific QQ number. Ask for 1–10 posts or say “next page” to continue. Viewing is available even when publishing is disabled.
+guide.tool: With enablePublishTool enabled, allowlisted users can send images and MP4 videos in chat and ask the bot to write a caption and publish the selected files together in one Qzone post.
 guide.interactions: Automatic comments and replies
 guide.interactionConfig: Choose a Qzone preset and an interaction model (subModel), then add QQ numbers to interactionAllowUserIds. This list is independent of the command allowlist. By default the bot only interacts with people on this list, so leaving it empty prevents automatic interactions. The model receives share card titles, summaries and links. Covers use the interaction model or @vision for image reading, sharing the limits of nine images per interaction, 15 MiB per image and 45 MiB in total.
 guide.comments: Turn on friend comments (enableFriendPostComment) to let the bot consider commenting on new posts from friends. Set interactionMonitorPostLimit to the number of posts whose comments you want to follow, or zero to turn off replies. On startup the bot records existing activity and begins handling new posts and comments at the next check.

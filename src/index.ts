@@ -6,7 +6,7 @@ import { registerDailyDigest } from './daily-digest/index.js'
 import { registerAutoInteraction } from './auto-interaction/index.js'
 import type { RuntimeReports } from './status.js'
 import { registerPublishTool } from './publishing/tool.js'
-import { registerVideoTool } from './qzone/video-tool.js'
+import { registerFeedTool } from './qzone/feed-tool.js'
 import { createQzoneService } from './qzone/service.js'
 import { createDiaryJournal } from './journal/repository.js'
 import { registerWebUI } from './webui.js'
@@ -42,8 +42,8 @@ export function apply(ctx: Context, config: Config) {
         inject: ['satori', 'presets', 'prompt', 'chatluna', 'ai'],
         apply: ctx => registerAutoInteraction(ctx, config, qzone, reports)
     })
-    ctx.inject(['tools', 'chat'], scope => registerVideoTool(scope, config, qzone))
-    if (config.enablePublishTool) {
-        ctx.inject(['tools'], scope => registerPublishTool(scope, config, qzone))
-    }
+    ctx.inject(['tools'], scope => {
+        registerFeedTool(scope, config, qzone)
+        if (config.enablePublishTool) registerPublishTool(scope, config, qzone)
+    })
 }
