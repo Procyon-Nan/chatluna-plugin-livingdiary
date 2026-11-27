@@ -21,6 +21,7 @@ journal.pages: Diary pages
 journal.previousEntry: Previous entry that day
 journal.nextEntry: Next entry that day
 journal.memoryTitle: Reference memories
+journal.mobileContent: Diary content
 journal.noMemories: No reference memories for this entry.
 status.unconfirmed: Not published to Qzone
 status.published: Published to Qzone

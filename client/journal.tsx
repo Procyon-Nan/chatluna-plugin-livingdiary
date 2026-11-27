@@ -1,6 +1,6 @@
 import * as React from 'react'
-import { Alert, Badge, EmptyState, Skeleton } from '@chatluna/ui-kit'
-import { useLive, useLocale, useTranslate } from '@chatluna/ui-client/client'
+import { Alert, Badge, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@chatluna/ui-kit'
+import { PHONE_QUERY, useLive, useLocale, useMediaQuery, useTranslate } from '@chatluna/ui-client/client'
 import { useStored } from '@chatluna/ui-storage'
 import { useDiaryTimeline } from './diary-timeline.ts'
 import { DIARY_PAGE_SIZE } from '../src/journal/webui.ts'
@@ -30,7 +30,7 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
             onKeyDown={event => {
                 if (event.altKey || event.ctrlKey || event.metaKey) return
                 if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-                if (event.target instanceof HTMLInputElement) return
+                if (event.target instanceof HTMLInputElement || (event.target as Element).closest('[role="tab"]')) return
                 event.preventDefault()
                 const index = position.current + (event.key === 'ArrowLeft' ? -1 : 1)
                 const day = pages[index]
@@ -71,14 +71,13 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
                             if (id === preset.id) goTo(1)
                             else onSelect(id)
                         }} />}
-                        {day === 'empty' && <div className="ld-spread">
-                            <section className="ld-leaf ld-story"><h2 className="ld-index-title">{preset.name}</h2></section>
-                            <section className="ld-leaf ld-scraps">
+                        {day === 'empty' && <Spread secondaryLabel={t('journal.empty')}
+                            story={<section className="ld-leaf ld-story"><h2 className="ld-index-title">{preset.name}</h2></section>}
+                            scraps={<section className="ld-leaf ld-scraps">
                                 {dates.error && <Alert variant="destructive">{dates.error}</Alert>}
                                 {!dates.error && !dates.data && <Skeleton className="h-12 w-full" />}
                                 {!dates.error && dates.data && <EmptyState title={t('journal.empty')} />}
-                            </section>
-                        </div>}
+                            </section>} />}
                         {day !== 'presets' && day !== 'empty' && <Day presetId={preset.id} date={day} />}
                     </div>
                 })}
@@ -102,6 +101,27 @@ export function Journal({ preset, presets, onSelect }: { preset: Preset; presets
     )
 }
 
+function Spread({ story, scraps, secondaryLabel }: {
+    story: React.ReactElement<{ hidden?: boolean }>
+    scraps?: React.ReactElement<{ hidden?: boolean }>
+    secondaryLabel: string
+}) {
+    const t = useTranslate('livingdiary')
+    const compact = useMediaQuery(PHONE_QUERY)
+    const [leaf, setLeaf] = React.useState<'story' | 'scraps'>('story')
+    return <article className="ld-spread">
+        {compact && scraps && <Tabs value={leaf} onValueChange={value => setLeaf(value as 'story' | 'scraps')}
+            aria-label={t('journal.mobileContent')} className="ld-mobile-tabs">
+            <TabsList variant="line" activateOnFocus className="h-10 w-full">
+                <TabsTrigger value="story">{t('tab.journal')}</TabsTrigger>
+                <TabsTrigger value="scraps">{secondaryLabel}</TabsTrigger>
+            </TabsList>
+        </Tabs>}
+        {React.cloneElement(story, { hidden: compact && leaf !== 'story' })}
+        {scraps && React.cloneElement(scraps, { hidden: compact && leaf !== 'scraps' })}
+    </article>
+}
+
 function PresetIndex({ presets, current, dates, theme, onThemeChange, onPick }: {
     presets: Preset[]
     current: Preset
@@ -122,8 +142,8 @@ function PresetIndex({ presets, current, dates, theme, onThemeChange, onPick }: 
     } else if (dates) {
         inscription = t('journal.firstPage')
     }
-    return <article className="ld-spread">
-        <section className="ld-leaf ld-story ld-frontispiece">
+    return <Spread secondaryLabel={t('journal.preset')}
+        story={<section className="ld-leaf ld-story ld-frontispiece">
             <div className="ld-bookplate">
                 <p className="ld-bookplate-caption">{t('journal.belongsTo')}</p>
                 <div className="ld-signature">
@@ -142,8 +162,8 @@ function PresetIndex({ presets, current, dates, theme, onThemeChange, onPick }: 
                     ))}
                 </div>
             </div>
-        </section>
-        <section className="ld-leaf ld-scraps">
+        </section>}
+        scraps={<section className="ld-leaf ld-scraps">
             <header className="ld-scrap-title"><h3>{t('journal.preset')}</h3></header>
             <div className="ld-writing"><ul className="ld-index-list">
                 {presets.map(item => <li key={item.id}>
@@ -152,8 +172,7 @@ function PresetIndex({ presets, current, dates, theme, onThemeChange, onPick }: 
                     </button>
                 </li>)}
             </ul></div>
-        </section>
-    </article>
+        </section>} />
 }
 
 function Day({ presetId, date }: { presetId: string; date: string }) {
@@ -162,43 +181,43 @@ function Day({ presetId, date }: { presetId: string; date: string }) {
     const [entryIndex, setEntryIndex] = React.useState(0)
     const page = Math.floor(entryIndex / DIARY_PAGE_SIZE) + 1
     const result = useLive('livingdiary.entries', { presetId, date, page })
-    if (result.error) return <Alert variant="destructive">{result.error}</Alert>
-    if (!result.data) return <div className="ld-spread" aria-busy="true"><div className="ld-leaf ld-story" /><div className="ld-leaf ld-scraps" /></div>
+    if (result.error) return <Spread secondaryLabel={t('journal.memoryTitle')}
+        story={<section className="ld-leaf ld-story"><Alert variant="destructive">{result.error}</Alert></section>} />
+    if (!result.data) return <Spread secondaryLabel={t('journal.memoryTitle')}
+        story={<section className="ld-leaf ld-story" aria-busy="true"><Skeleton className="h-12 w-full" /></section>} />
     const { entries, total } = result.data
     const entry = entries[entryIndex % DIARY_PAGE_SIZE]
-    if (!entry) return <EmptyState title={t('journal.emptyDay')} />
+    if (!entry) return <Spread secondaryLabel={t('journal.memoryTitle')}
+        story={<section className="ld-leaf ld-story"><EmptyState title={t('journal.emptyDay')} /></section>} />
     const day = new Date(date)
-    return (
-        <article key={entry.id} className="ld-spread">
-            <section className="ld-leaf ld-story" aria-label={t('tab.journal')}>
-                <header className="ld-dateline">
-                    <h2><time dateTime={date}>{day.toLocaleDateString(active, { month: 'long', day: 'numeric', timeZone: 'UTC' })}</time></h2>
-                    <div><span>{date.slice(0, 4)}</span><span>{day.toLocaleDateString(active, { weekday: 'long', timeZone: 'UTC' })}</span></div>
-                </header>
-                <div className="ld-writing ld-prose" tabIndex={0}><p>{entry.content}</p></div>
-                <footer className="ld-colophon">
-                    <time dateTime={entry.writtenAt}>{new Date(entry.writtenAt).toLocaleTimeString(active, { hour: '2-digit', minute: '2-digit' })}</time>
-                    {entry.status && <Badge variant={entry.status === 'failed' ? 'destructive' : 'secondary'}>{t(`status.${entry.status}`)}</Badge>}
-                </footer>
-            </section>
-            <section className="ld-leaf ld-scraps">
-                <header className="ld-scrap-title">
-                    <span aria-hidden="true" className="ld-tape" />
-                    <h3>{t('journal.memoryTitle')}</h3><span className="ld-count">{entry.memoryCount}</span>
-                </header>
-                <div className="ld-writing" tabIndex={0}>
-                    {entry.memoryCount ? <Memories presetId={presetId} id={entry.id} /> : <p className="ld-empty">{t('journal.noMemories')}</p>}
-                </div>
-                <footer className="ld-colophon"><Flower />
-                    {total > 1 && <nav aria-label={t('journal.pages')} className="ld-folios">
-                        <button aria-label={t('journal.previousEntry')} disabled={entryIndex === 0} onClick={() => setEntryIndex(entryIndex - 1)}>‹</button>
-                        <span>{entryIndex + 1} / {total}</span>
-                        <button aria-label={t('journal.nextEntry')} disabled={entryIndex + 1 === total} onClick={() => setEntryIndex(entryIndex + 1)}>›</button>
-                    </nav>}
-                </footer>
-            </section>
-        </article>
-    )
+    return <Spread secondaryLabel={`${t('journal.memoryTitle')}（${entry.memoryCount}）`}
+        story={<section className="ld-leaf ld-story" aria-label={t('tab.journal')}>
+            <header className="ld-dateline">
+                <h2><time dateTime={date}>{day.toLocaleDateString(active, { month: 'long', day: 'numeric', timeZone: 'UTC' })}</time></h2>
+                <div><span>{date.slice(0, 4)}</span><span>{day.toLocaleDateString(active, { weekday: 'long', timeZone: 'UTC' })}</span></div>
+            </header>
+            <div className="ld-writing ld-prose" tabIndex={0}><p>{entry.content}</p></div>
+            <footer className="ld-colophon">
+                <time dateTime={entry.writtenAt}>{new Date(entry.writtenAt).toLocaleTimeString(active, { hour: '2-digit', minute: '2-digit' })}</time>
+                {entry.status && <Badge variant={entry.status === 'failed' ? 'destructive' : 'secondary'}>{t(`status.${entry.status}`)}</Badge>}
+            </footer>
+        </section>}
+        scraps={<section className="ld-leaf ld-scraps">
+            <header className="ld-scrap-title">
+                <span aria-hidden="true" className="ld-tape" />
+                <h3>{t('journal.memoryTitle')}</h3><span className="ld-count">{entry.memoryCount}</span>
+            </header>
+            <div className="ld-writing" tabIndex={0}>
+                {entry.memoryCount ? <Memories presetId={presetId} id={entry.id} /> : <p className="ld-empty">{t('journal.noMemories')}</p>}
+            </div>
+            <footer className="ld-colophon"><Flower />
+                {total > 1 && <nav aria-label={t('journal.pages')} className="ld-folios">
+                    <button aria-label={t('journal.previousEntry')} disabled={entryIndex === 0} onClick={() => setEntryIndex(entryIndex - 1)}>‹</button>
+                    <span>{entryIndex + 1} / {total}</span>
+                    <button aria-label={t('journal.nextEntry')} disabled={entryIndex + 1 === total} onClick={() => setEntryIndex(entryIndex + 1)}>›</button>
+                </nav>}
+            </footer>
+        </section>} />
 }
 
 function Flower() {

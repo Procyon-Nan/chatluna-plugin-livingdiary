@@ -21,6 +21,7 @@ journal.pages: 日记翻页
 journal.previousEntry: 当天上一篇
 journal.nextEntry: 当天下一篇
 journal.memoryTitle: 参考记忆
+journal.mobileContent: 日记内容
 journal.noMemories: 这篇日记没有参考记忆。
 status.unconfirmed: 未发布到 QQ 空间
 status.published: 已发布到 QQ 空间

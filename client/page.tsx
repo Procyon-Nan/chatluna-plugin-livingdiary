@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useConnection, useLive, useTranslate } from '@chatluna/ui-client/client'
-import { Alert, Button, EmptyState, Skeleton } from '@chatluna/ui-kit'
+import { Alert, Button, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger } from '@chatluna/ui-kit'
 import { Journal } from './journal.tsx'
 import { Settings } from './settings.tsx'
 import { Guide } from './guide.tsx'
@@ -28,15 +28,14 @@ export function LivingDiaryPage() {
 
     return (
         <div className="ld-page flex h-full min-w-0 flex-col gap-4 overflow-y-auto p-4 sm:p-6">
-            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
-                <nav aria-label="LivingDiary" className="flex min-w-0 items-center gap-1 overflow-x-auto">
-                    {tabs.map(key => (
-                        <button key={key} type="button" onClick={() => setTab(key)} aria-current={key === tab ? 'page' : undefined}
-                            className="shrink-0 border-b-2 border-transparent px-2 py-2 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-ring focus-visible:-outline-offset-2 aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground">
+            <header className="border-b border-border">
+                <Tabs value={tab} onValueChange={value => setTab(value as Tab)} aria-label="LivingDiary" className="min-w-0 gap-0">
+                    <TabsList variant="line" activateOnFocus className="h-auto max-w-full justify-start overflow-x-auto">
+                        {tabs.map(key => <TabsTrigger key={key} value={key} className="flex-none px-2 py-2 text-sm">
                             {t(`tab.${key}`)}
-                        </button>
-                    ))}
-                </nav>
+                        </TabsTrigger>)}
+                    </TabsList>
+                </Tabs>
             </header>
             <section ref={panel} aria-label={t(`tab.${tab}`)} className="flex min-h-0 min-w-0 flex-1 flex-col">
                 {connection.state === 'offline' && tab !== 'guide' && <Alert className="mb-4">{t('offline')}</Alert>}
